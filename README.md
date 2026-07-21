@@ -114,8 +114,9 @@ Hard fails (no modal): destination symlink/reparse, file↔directory conflicts, 
 
 | Drop | Result |
 | --- | --- |
-| Exactly one path ending in `.zip` | Open that archive |
-| Any other non-empty drop | Open Create with those paths as sources |
+| Exactly one archive path (no archive open) | Open that archive |
+| Files/folders while an **editable** archive is open | **Add into the current folder** (breadcrumb path) |
+| Files/folders with no archive open | Open Create with those paths as sources |
 
 ## Edit archive
 

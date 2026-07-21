@@ -323,6 +323,41 @@ html, body {
   padding: 16px 20px;
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
+  transition: box-shadow 0.12s ease, outline-color 0.12s ease;
+}
+
+.main-content.drop-target-active {
+  outline: 2px dashed var(--pastel-mint);
+  outline-offset: -6px;
+  box-shadow: inset 0 0 0 9999px rgba(155, 233, 223, 0.06);
+}
+
+.main-content.drop-target-create {
+  outline: 2px dashed var(--pastel-lavender);
+  outline-offset: -6px;
+  box-shadow: inset 0 0 0 9999px rgba(185, 204, 230, 0.06);
+}
+
+.drop-hint {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  border-radius: 6px;
+  border: 1.5px solid var(--pastel-mint);
+  background: rgba(14, 12, 16, 0.92);
+  color: var(--text-main);
+  font-size: 12px;
+  pointer-events: none;
+  max-width: min(90%, 28rem);
+  text-align: center;
+}
+
+.main-content.drop-target-create .drop-hint {
+  border-color: var(--pastel-lavender);
 }
 
 /* Archive search / filter bar — full width, directly under toolbar */

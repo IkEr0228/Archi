@@ -303,18 +303,29 @@
 
   let matchCount = $derived(archiveQueryActive ? visibleEntries.length : null);
 
+  /** Highlight drop target when dragging files over the window. */
+  let fileDragActive = $state(false);
+
   onMount(() => {
-    // DnD: single openable archive → open; else create ZIP from sources
+    // External file DnD (Explorer → Archi):
+    // - Archive open + editable: add into current virtual folder
+    // - No archive: single archive path → open; otherwise open Create modal
     const unlistenDragDrop = getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type !== 'drop') return;
+      const kind = event.payload.type;
+      if (kind === 'enter' || kind === 'over') {
+        fileDragActive = true;
+        return;
+      }
+      if (kind === 'leave') {
+        fileDragActive = false;
+        return;
+      }
+      if (kind !== 'drop') return;
+      fileDragActive = false;
       if (activeOperation) return;
       const paths = event.payload.paths;
       if (!paths?.length) return;
-      if (paths.length === 1 && isArchivePath(paths[0])) {
-        openArchiveAtPath(paths[0]);
-        return;
-      }
-      openCreateModal(paths);
+      handleExternalFileDrop(paths);
     });
 
     // rAF-coalesce progress: stash latest payload; apply at most once per frame.
@@ -909,22 +920,50 @@
     );
   }
 
+  /** Add disk paths into the open archive at the current virtual folder. */
+  async function addSourcesToCurrentFolder(sources: string[]) {
+    if (!canAdd || activeOperation || !sources.length || !currentArchivePath) return;
+    const archiveParent = archiveParentForAdd(currentInternalPath);
+    await runEditOperation('Add', (operationId) =>
+      invoke<EditSummary>('add_to_archive_command', {
+        operationId,
+        zipPath: currentArchivePath,
+        sourcePaths: sources,
+        archiveParent
+      })
+    );
+  }
+
+  /**
+   * Drop from Explorer onto the app window.
+   * When an editable archive is open, files go into the current folder (breadcrumb path).
+   */
+  function handleExternalFileDrop(paths: string[]) {
+    if (activeOperation) return;
+    if (isArchiveOpen) {
+      if (!canAdd) {
+        errorMessage =
+          'This archive cannot be edited (add files is only available for ZIP, TAR family, and 7z).';
+        return;
+      }
+      void addSourcesToCurrentFolder(paths);
+      return;
+    }
+    // No archive open: open one archive file, or start Create with dropped sources.
+    if (paths.length === 1 && isArchivePath(paths[0])) {
+      openArchiveAtPath(paths[0]);
+      return;
+    }
+    openCreateModal(paths);
+  }
+
   async function handleAddToArchive() {
     if (!canAdd || activeOperation) return;
     try {
       const sources = await invoke<string[] | null>('select_multiple_files');
       if (!sources || sources.length === 0) return;
       if (activeOperation) return;
-      const archiveParent = archiveParentForAdd(currentInternalPath);
-
-      await runEditOperation('Add', (operationId) =>
-        invoke<EditSummary>('add_to_archive_command', {
-          operationId,
-          zipPath: currentArchivePath,
-          sourcePaths: sources,
-          archiveParent
-        })
-      );
+      await addSourcesToCurrentFolder(sources);
     } catch (e: any) {
       errorMessage = `Could not select files to add: ${formatInvokeError(e)}`;
     }
@@ -1001,7 +1040,22 @@
     />
   {/if}
 
-  <div class="main-content">
+  <div
+    class="main-content"
+    class:drop-target-active={fileDragActive && isArchiveOpen && canAdd}
+    class:drop-target-create={fileDragActive && !isArchiveOpen}
+  >
+    {#if fileDragActive && isArchiveOpen && canAdd}
+      <div class="drop-hint monospace" aria-live="polite">
+        Drop to add into {currentInternalPath === '/' || !currentInternalPath
+          ? 'archive root'
+          : currentInternalPath}
+      </div>
+    {:else if fileDragActive && !isArchiveOpen}
+      <div class="drop-hint monospace" aria-live="polite">
+        Drop an archive to open, or files/folders to create
+      </div>
+    {/if}
     {#if isArchiveOpen}
       <div class="breadcrumbs-area">
         <div class="breadcrumbs-container">
