@@ -10,7 +10,10 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 - **Multi-format open/list/extract:** ZIP, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
 - **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets
-- **Edit:** ZIP stream rebuild; TAR family + 7z extract/repack (add, folder, rename, delete, replace, **drag rows into folders**)
+- **Edit:** add, folder, rename, delete, replace, **in-archive move** (drag into folders / up to parent / Root)
+- **Fast edit paths:** ZIP append + logical delete; 7z non-solid **pack-copy** (no full Max recompress); TAR stream rebuild (no full work tree)
+- **Edit mode UI:** Auto / Fast / Compact + **Compact** rewrite action
+- **Explorer DnD:** drop files into an open archive folder, or drop an archive to open / sources to create
 - **Test:** all open formats — decompress/read integrity without writing user files
 - **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
 - **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes
@@ -22,12 +25,12 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 | Format | Open / list | Extract | Create | Test | Edit | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| **ZIP** | Yes | Yes | Yes | Yes | Yes | Stored + Deflate. Exotic methods may list but do not extract. Stream rebuild edit. |
-| **7z** | Yes | Yes | Yes | Yes | Yes | LZMA/LZMA2; unencrypted open. Edit = extract/repack (needs free disk). |
-| **TAR** | Yes | Yes | Yes | Yes | Yes | Create = store. Edit = extract/repack. |
-| **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | Edit = extract/repack. |
-| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | Edit = extract/repack. |
-| **TAR.XZ / TXZ** | Yes | Yes | Yes | Yes | Yes | Edit = extract/repack. |
+| **ZIP** | Yes | Yes | Yes | Yes | Yes | Stored + Deflate. Edit: append add, logical/fast delete, stream rebuild rename/move. |
+| **7z** | Yes | Yes | Yes | Yes | Yes | LZMA/LZMA2; unencrypted. Edit: non-solid pack-copy (fallback stream rebuild / solid repack). |
+| **TAR** | Yes | Yes | Yes | Yes | Yes | Create = store. Edit = stream rebuild. |
+| **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
+| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
+| **TAR.XZ / TXZ** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
 | **GZIP** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
 | **BZIP2** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
 | **XZ** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
@@ -65,7 +68,7 @@ Release artifacts (after `npm run tauri build`):
 | Artifact | Typical path |
 | --- | --- |
 | EXE | `src-tauri/target/release/archi_backend.exe` |
-| Installer | `src-tauri/target/release/bundle/nsis/archi_0.1.0_x64-setup.exe` |
+| Installer | `src-tauri/target/release/bundle/nsis/archi_0.2.0_x64-setup.exe` |
 
 ## Development checks
 

@@ -1,7 +1,8 @@
 # Archi development status
 
-**Last updated:** 2026-07-21  
+**Last updated:** 2026-07-22  
 **Branch:** `master`  
+**Latest release:** **v0.2.0**  
 **License:** MIT (see root `LICENSE`)  
 **Repository:** https://github.com/IkEr0228/Archi
 
@@ -13,13 +14,15 @@
 | **Phase 2** | Extract modes, conflicts, search/filter/sort, test/properties, create options + DnD | **Done** |
 | **Phase 3** | Formats, ZIP edit, CLI, multi-format create | **Done** |
 | **Phase 3.5** | File associations / Explorer (opt-in) | **Done** |
+| **Phase 4** | Incremental edit (ZIP append/logical delete, 7z pack-copy, TAR stream), in-archive DnD, Edit mode UI | **Done (v0.2.0)** |
 | **Later** | RAR (read only if licensed), passwords UI, encrypted 7z, ZPAQ | Deferred |
 
 ## What works today
 
-- **ZIP:** open, list, search/filter/sort, extract (modes + conflicts), create, test, properties, edit, DnD open/create. Codecs: Stored + Deflate for extract/create/test/edit.
+- **ZIP:** open, list, search/filter/sort, extract (modes + conflicts), create, test, properties, edit (append/logical delete/rebuild), in-archive DnD, Explorer drop-to-folder. Codecs: Stored + Deflate.
 - **Create formats (dropdown order):** ZIP, **7z**, TAR, TAR.GZ, TAR.BZ2, TAR.XZ (7z defaults to Max / LZMA2-9).
-- **TAR family + 7z:** open, list, extract, **test**, **edit** (repack). Single-stream gz/bz2/xz: open/list/extract/**test** only.
+- **TAR family + 7z:** open, list, extract, **test**, **edit** (stream rebuild / pack-copy / solid repack fallback). Single-stream gz/bz2/xz: open/list/extract/**test** only.
+- **Edit mode:** Auto / Fast / Compact toolbar control + Compact archive action.
 - **CLI:** `archi.exe path\to\archive`; single-instance forwards a second launch to the first process.
 - **File associations:** opt-in per-user (HKCU) via toolbar **Associations**.
 - **Not enabled:** encrypted 7z, RAR, passwords UI, single-stream create, ZPAQ.
@@ -86,7 +89,16 @@ Acrylic / fonts / transparent window are preserved. Runtime work targets backend
 | --- | --- |
 | Release profile | LTO, strip, opt-level 3, panic=abort |
 | **zip** crate | Deflate only (no bzip2/zstd/aes-crypto features) |
-| **sevenz-rust2** | compress + util (LZMA/LZMA2); no optional aes/ppmd/bzip2 |
+| **sevenz-rust2** | Vendored path (pack-copy API); compress + util |
+
+### Edit performance (v0.2.0)
+
+| Format | Fast path | Notes |
+| --- | --- | --- |
+| ZIP add/mkdir | Append | PreferCompact → full rebuild |
+| ZIP delete | Logical CD delete (PreferFast/Auto small) | Compact reclaims orphans |
+| 7z non-solid | Pack-stream byte-copy | Solid → repack fallback; edit default Normal not Max |
+| TAR* | Stream rebuild | No full work-tree extract |
 
 ## Possible next work
 
@@ -94,3 +106,4 @@ Acrylic / fonts / transparent window are preserved. Runtime work targets backend
 2. Solid 7z packing (trade-offs with cancel)  
 3. Single-stream gz/bz2/xz create  
 4. RAR read (licensing) / ZPAQ  
+
