@@ -16,3 +16,9 @@ test('clamps empty and final windows', () => {
   assert.deepEqual(getVirtualRange(0, 0, 400, 35, 8), { start: 0, end: 0, top: 0, bottom: 0 });
   assert.deepEqual(getVirtualRange(5, 9999, 400, 35, 8), { start: 0, end: 5, top: 0, bottom: 0 });
 });
+
+test('zero rowHeight still renders a window (release measure race)', () => {
+  const r = getVirtualRange(100, 0, 0, 0, 4);
+  assert.ok(r.end > r.start, 'must render some rows when height not measured yet');
+  assert.equal(r.start, 0);
+});

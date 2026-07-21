@@ -47,8 +47,9 @@
   let anchorIndex = $state(-1);
   let container: HTMLDivElement;
   let scrollTop = $state(0);
-  let viewportHeight = $state(0);
-  let rowHeight = $state(0);
+  let viewportHeight = $state(400);
+  // Default until CSS var is measured — never leave 0 (hides all virtual rows).
+  let rowHeight = $state(35);
 
   // Smaller overscan = fewer DOM nodes on weak GPUs (still smooth with rAF scroll).
   const OVERSCAN = 4;
@@ -85,11 +86,16 @@
 
     const updateViewport = () => {
       scrollTop = container.scrollTop;
-      viewportHeight = container.clientHeight;
+      const h = container.clientHeight;
+      if (h > 0) viewportHeight = h;
       const measuredRowHeight = Number.parseFloat(
         getComputedStyle(container).getPropertyValue('--archive-row-height')
       );
-      if (Number.isFinite(measuredRowHeight)) rowHeight = measuredRowHeight;
+      if (Number.isFinite(measuredRowHeight) && measuredRowHeight > 0) {
+        rowHeight = measuredRowHeight;
+      } else {
+        rowHeight = archiveMode ? 48 : 35;
+      }
     };
 
     // Re-measure when archive mode toggles (row height CSS var changes).

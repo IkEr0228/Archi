@@ -66,18 +66,19 @@ test('byParent for deepest folder and empty folder', () => {
   assert.equal(byParent.get('empty'), undefined);
 });
 
-test('null parent_path maps to empty-string parent key', () => {
+test('null/empty parent_path normalizes to root key /', () => {
   const entries = [
     { path: 'orphan', name: 'orphan', parent_path: null },
-    { path: 'also', name: 'also', parent_path: undefined }
+    { path: 'also', name: 'also', parent_path: undefined },
+    { path: 'empty-parent', name: 'empty-parent', parent_path: '' }
   ];
   const { byParent, byPath } = buildArchiveIndexes(entries);
   assert.equal(byPath.get('orphan').path, 'orphan');
-  const orphans = byParent.get('') ?? [];
-  assert.equal(orphans.length, 2);
+  const rootKids = byParent.get('/') ?? [];
+  assert.equal(rootKids.length, 3);
   assert.deepEqual(
-    orphans.map((e) => e.path).sort(),
-    ['also', 'orphan']
+    rootKids.map((e) => e.path).sort(),
+    ['also', 'empty-parent', 'orphan']
   );
 });
 

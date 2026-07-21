@@ -1,5 +1,7 @@
 // @ts-check
 
+import { normalizeParentPath } from './archiveIndex.js';
+
 /**
  * @typedef {{
  *   path: string,
@@ -27,24 +29,18 @@ export function normalizeExtension(input) {
 }
 
 /**
- * Lowercase name/path for search; prefer fields set at index build.
+ * Lowercase name/path for search. Pure — no mutation (safe in `$derived`).
  * @param {ArchiveEntry} entry
  */
 function entryNameLower(entry) {
-  if (entry.nameLower != null) return entry.nameLower;
-  const v = (entry.name || '').toLowerCase();
-  entry.nameLower = v;
-  return v;
+  return (entry.name || '').toLowerCase();
 }
 
 /**
  * @param {ArchiveEntry} entry
  */
 function entryPathLower(entry) {
-  if (entry.pathLower != null) return entry.pathLower;
-  const v = (entry.path || '').toLowerCase();
-  entry.pathLower = v;
-  return v;
+  return (entry.path || '').toLowerCase();
 }
 
 /** @param {ArchiveEntry} entry @param {string} query */
@@ -173,7 +169,7 @@ export function filterAndSortEntries(opts) {
     sortDir
   } = opts;
   const archiveMode = isArchiveQueryActive({ query, typeFilter, extension });
-  const parent = currentInternalPath || '/';
+  const parent = normalizeParentPath(currentInternalPath);
 
   /** @type {ArchiveEntry[]} */
   let source;
@@ -181,7 +177,13 @@ export function filterAndSortEntries(opts) {
   if (!archiveMode && indexes?.byParent) {
     // Folder browse: O(1) children discovery — do not scan full n.
     source = indexes.byParent.get(parent) ?? [];
-    parentAlreadyScoped = true;
+    // Defensive: if index missed root (key mismatch), fall back to full scan.
+    if (source.length === 0 && (entries || []).length > 0) {
+      source = entries || [];
+      parentAlreadyScoped = false;
+    } else {
+      parentAlreadyScoped = true;
+    }
   } else {
     source = entries || [];
   }
@@ -189,7 +191,11 @@ export function filterAndSortEntries(opts) {
   // Normalize query once for the filter pass (avoids per-entry trim/toLowerCase).
   const q = (query || '').trim().toLowerCase();
   const filtered = source.filter((entry) => {
-    if (!archiveMode && !parentAlreadyScoped && entry.parent_path !== parent) {
+    if (
+      !archiveMode &&
+      !parentAlreadyScoped &&
+      normalizeParentPath(entry.parent_path) !== parent
+    ) {
       return false;
     }
     if (q && !entryNameLower(entry).includes(q) && !entryPathLower(entry).includes(q)) {

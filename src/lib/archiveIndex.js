@@ -9,12 +9,18 @@
  */
 
 /**
+ * Normalize parent keys so UI (`/`) and backend root (`/` or `""`) match.
+ * @param {string | null | undefined} parent
+ * @returns {string}
+ */
+export function normalizeParentPath(parent) {
+  if (parent == null || parent === '' || parent === '/') return '/';
+  return String(parent).replace(/\\/g, '/');
+}
+
+/**
  * Build O(1) path lookup and parent→children indexes for archive entries.
- * Pure data transform — no UI. Callers use byParent for folder browse
- * and byPath for random access without scanning the full list.
- *
- * Also attaches `nameLower` / `pathLower` on each entry once so archive search
- * can avoid repeated toLowerCase during filter.
+ * Pure data transform — does **not** mutate entries (safe inside Svelte `$derived`).
  *
  * @param {ArchiveEntry[] | null | undefined} entries
  * @returns {ArchiveIndexes}
@@ -25,11 +31,9 @@ export function buildArchiveIndexes(entries) {
   /** @type {Map<string, ArchiveEntry>} */
   const byPath = new Map();
   for (const entry of entries || []) {
-    // Search lowercase caches (idempotent if rebuild runs again).
-    entry.nameLower = (entry.name || '').toLowerCase();
-    entry.pathLower = (entry.path || '').toLowerCase();
+    if (!entry || typeof entry.path !== 'string') continue;
     byPath.set(entry.path, entry);
-    const parent = entry.parent_path ?? '';
+    const parent = normalizeParentPath(entry.parent_path);
     let list = byParent.get(parent);
     if (!list) {
       list = [];

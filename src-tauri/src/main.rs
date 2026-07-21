@@ -1,3 +1,6 @@
+// Hide console window in release builds (Windows GUI app).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use archi_backend_lib::cli_open::resolve_cli_archive_path;
 use archi_backend_lib::commands::{self, StartupCliPath};
 use archi_backend_lib::operations::OperationRegistry;
@@ -53,6 +56,11 @@ fn main() {
                         None,
                     );
                 }
+
+                // Ensure the main window is visible and focused (release/console races).
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
             }
             Ok(())
         })
