@@ -28,7 +28,8 @@ flate2 = "1"
 bzip2 = "0.5"
 xz2 = "0.1"
 # Slim features: smaller binary; LZMA/LZMA2 still available for open/create.
-sevenz-rust2 = { version = "0.21", default-features = false, features = ["compress", "util"] }
+# Pack-copy spike uses a local vendor fork (push_packed_entry); see vendor/sevenz-rust2.
+sevenz-rust2 = { path = "../vendor/sevenz-rust2", version = "0.21", default-features = false, features = ["compress", "util"] }
 winreg = "0.55"
 
 # Desktop release: speed + smaller binary.
