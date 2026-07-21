@@ -210,6 +210,7 @@ html, body {
   opacity: 0.7;
 }
 
+/* Edit mode — same custom menu pattern as Type filter / Extract (not native <select>). */
 .toolbar-edit-mode {
   display: inline-flex;
   align-items: center;
@@ -219,6 +220,8 @@ html, body {
   font-size: 11px;
   cursor: default;
   user-select: none;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
 .toolbar-edit-mode.disabled {
@@ -226,35 +229,13 @@ html, body {
 }
 
 .toolbar-edit-mode-label {
-  letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
 
-.toolbar-edit-mode select {
-  background: var(--bg-hover);
-  border: 1.5px dashed var(--border-color);
-  color: var(--text-main);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  outline: none;
-  max-width: 7.5rem;
-}
-
-.toolbar-edit-mode select:hover:not(:disabled) {
-  color: var(--pastel-rose);
-  border-color: var(--pastel-rose);
-  background: var(--bg-active);
-}
-
-.toolbar-edit-mode select:disabled {
+.toolbar-edit-mode .type-filter-trigger:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
-  opacity: 0.85;
-}
-
-.toolbar-edit-mode select:focus-visible {
-  outline: 1.5px dotted var(--pastel-rose);
+  transform: none;
 }
 
 .toolbar button, .parent-btn, .empty-state button, .error-banner-dismiss, .warning-banner-continue, .modal-footer button {
