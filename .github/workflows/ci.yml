@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Frontend unit tests
+        run: npm run test:frontend
+
+      - name: Svelte check
+        run: npm run check
+
+      - name: Frontend production build
+        run: npm run build
+
+      - name: Rustfmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

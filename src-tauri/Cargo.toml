@@ -1,0 +1,45 @@
+[package]
+name = "archi_backend"
+version = "0.1.0"
+edition = "2021"
+description = "Archi Windows archive manager — Tauri backend"
+license = "MIT"
+authors = ["IKER"]
+repository = "https://github.com/IkEr0228/Archi"
+homepage = "https://github.com/IkEr0228/Archi"
+
+
+[lib]
+name = "archi_backend_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1.0", features = ["derive"] }
+# Stored + Deflate only — drop bzip2/zstd/aes-crypto codecs from the zip crate.
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.5"
+window-vibrancy = "0.5"
+xz2 = "0.1"
+# Slim features: smaller binary; LZMA/LZMA2 still available for open/create.
+sevenz-rust2 = { version = "0.21", default-features = false, features = ["compress", "util"] }
+winreg = "0.55"
+
+# Desktop release: speed + smaller binary.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+# Slightly faster compile for iterative dev (not used by tauri release).
+[profile.dev]
+opt-level = 1

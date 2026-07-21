@@ -1,0 +1,50 @@
+# Dependencies & toolchains
+node_modules/
+
+# Frontend build
+.svelte-kit/
+build/
+dist/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & coverage
+*.log
+coverage/
+
+# Local scratch, notes, and tool caches
+tmp/
+temp/
+*.tmp
+*.bak
+test-output/
+benchmark-results/
+task-notes/
+*.local.md
+.cache/
+.worktrees/
+graphify-out/
+graphify-rust/
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+ehthumbs.db
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# Accidental local binaries in repo root
+/*.exe
+/*.msi
