@@ -23,6 +23,9 @@ pub struct OperationProgress {
     pub total_files: u64,
     pub current_file: String,
     pub percentage: f32,
+    /// Optional edit/extract phase label: "plan" | "append" | "rebuild" | "extract" | "repack" | "finalize".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -90,6 +93,26 @@ pub struct CreateOptions {
     pub overwrite: bool,
 }
 
+/// Preference for how archive edits are applied (append/fast vs compact rebuild).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EditStrategyPref {
+    #[default]
+    Auto,
+    PreferFast,
+    PreferCompact,
+}
+
+/// Options for in-archive edit commands (delete/rename/add/etc.).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditOptions {
+    #[serde(default)]
+    pub compression: Option<CompressionPreset>,
+    #[serde(default)]
+    pub strategy: Option<EditStrategyPref>,
+}
+
 impl CreateOptions {
     pub fn default_zip() -> Self {
         Self {
@@ -124,6 +147,9 @@ pub struct EditSummary {
     pub operation_id: String,
     pub destination: String,
     pub members_written: u64,
+    /// Strategy actually used for this edit (e.g. "rebuild", "append"); None if unknown.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy_used: Option<String>,
 }
 
 impl CommandError {

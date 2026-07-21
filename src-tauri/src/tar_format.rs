@@ -38,7 +38,7 @@ fn read_only_capabilities() -> ArchiveCapabilities {
         list: true,
         extract: true,
         create: false,
-        // Multi-entry TAR: integrity test yes; full ZIP-style edit via repack (see archive_edit).
+        // Multi-entry TAR: integrity test yes; stream-rebuild edit (see tar_edit).
         edit: true,
         encrypt: false,
         test: true,
@@ -756,6 +756,7 @@ fn extract_tar_reader<R: Read>(
                     total_files: planned_or_extracted.max(extracted).max(1),
                     current_file: name.clone(),
                     percentage: 0.0,
+                    phase: None,
                 });
             }
 
@@ -846,6 +847,7 @@ fn extract_tar_reader<R: Read>(
         total_files,
         current_file: "Completed".into(),
         percentage: 100.0,
+        phase: None,
     });
 
     Ok(OperationSummary {

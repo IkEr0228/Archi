@@ -169,6 +169,7 @@ pub fn extract_xz(
         total_files: 1,
         current_file: name.clone(),
         percentage: 0.0,
+        phase: None,
     });
 
     // Conflict resolution before inflate so Skip avoids full decompress.
@@ -311,6 +312,7 @@ pub fn extract_xz(
                             total_files: 1,
                             current_file: name.clone(),
                             percentage: 50.0,
+                            phase: None,
                         });
                     }
                 }
@@ -362,6 +364,7 @@ pub fn extract_xz(
                         total_files: 1,
                         current_file: name.clone(),
                         percentage: 50.0,
+                        phase: None,
                     });
                 }
             }
@@ -375,6 +378,7 @@ pub fn extract_xz(
         total_files: 1,
         current_file: "Completed".into(),
         percentage: 100.0,
+        phase: None,
     });
 
     Ok(OperationSummary {

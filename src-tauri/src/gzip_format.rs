@@ -200,6 +200,7 @@ pub fn extract_gzip(
         total_files: 1,
         current_file: name.clone(),
         percentage: 0.0,
+        phase: None,
     });
 
     // Resolve destination conflicts before decompressing (skip avoids full inflate).
@@ -345,6 +346,7 @@ pub fn extract_gzip(
                             total_files: 1,
                             current_file: name.clone(),
                             percentage: 50.0,
+                            phase: None,
                         });
                     }
                 }
@@ -399,6 +401,7 @@ pub fn extract_gzip(
                         total_files: 1,
                         current_file: name.clone(),
                         percentage: 50.0,
+                        phase: None,
                     });
                 }
             }
@@ -412,6 +415,7 @@ pub fn extract_gzip(
         total_files: 1,
         current_file: "Completed".into(),
         percentage: 100.0,
+        phase: None,
     });
 
     Ok(OperationSummary {

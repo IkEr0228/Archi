@@ -1,12 +1,16 @@
-//! Multi-format edit: ZIP stream-rebuild; TAR family / 7z via extract→mutate→recreate.
+//! Multi-format edit: ZIP stream-rebuild; 7z stream-rebuild (non-solid) / repack (solid);
+//! TAR family stream-rebuild (repack_edit kept as unused fallback helper).
 
 use crate::extraction::{extract_any, FailOnConflict};
 use crate::format_detect::{detect_format, ArchiveFormat};
 use crate::models::{
-    CommandError, CompressionPreset, CreateFormat, CreateOptions, EditSummary, OperationProgress,
+    CommandError, CompressionPreset, CreateFormat, CreateOptions, EditOptions, EditSummary,
+    OperationProgress,
 };
+use crate::sevenz_edit;
 use crate::sevenz_format::create_sevenz_archive;
 use crate::tar_create::create_tar_archive;
+use crate::tar_edit;
 use crate::zip_edit;
 use crate::zipper::create_zip_archive;
 use std::fs;
@@ -39,11 +43,14 @@ fn format_to_create(fmt: ArchiveFormat) -> Result<CreateFormat, CommandError> {
 fn default_compression(fmt: CreateFormat) -> CompressionPreset {
     match fmt {
         CreateFormat::Tar => CompressionPreset::Store,
-        CreateFormat::SevenZ => CompressionPreset::Max,
+        // Edit repack (TAR / legacy paths): prefer speed over ratio. Create UI still uses Max when chosen.
+        CreateFormat::SevenZ => CompressionPreset::Normal,
         _ => CompressionPreset::Normal,
     }
 }
 
+// Repack helpers retained as optional fallback if stream rebuild fails hard for a format.
+#[allow(dead_code)]
 fn create_work_dir(archive_path: &Path) -> Result<PathBuf, CommandError> {
     let parent = archive_path
         .parent()
@@ -66,10 +73,12 @@ fn create_work_dir(archive_path: &Path) -> Result<PathBuf, CommandError> {
     Ok(dir)
 }
 
+#[allow(dead_code)]
 fn remove_tree(path: &Path) {
     let _ = fs::remove_dir_all(path);
 }
 
+#[allow(dead_code)]
 fn recreate_from_work(
     work: &Path,
     archive_path: &Path,
@@ -120,6 +129,7 @@ fn recreate_from_work(
     Ok(summary.extracted_files)
 }
 
+#[allow(dead_code)]
 fn extract_all_to_work(
     archive_path: &Path,
     work: &Path,
@@ -139,6 +149,7 @@ fn extract_all_to_work(
     .map(|_| ())
 }
 
+#[allow(dead_code)]
 fn apply_deletes(work: &Path, paths: &[String]) -> Result<(), CommandError> {
     for raw in paths {
         let rel = raw.trim_matches('/').replace('\\', "/");
@@ -165,6 +176,7 @@ fn apply_deletes(work: &Path, paths: &[String]) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn apply_rename(work: &Path, from: &str, to: &str) -> Result<(), CommandError> {
     let from_rel = from.trim_matches('/').replace('\\', "/");
     let to_rel = to.trim_matches('/').replace('\\', "/");
@@ -187,6 +199,7 @@ fn apply_rename(work: &Path, from: &str, to: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn apply_mkdir(work: &Path, folder: &str) -> Result<(), CommandError> {
     let rel = folder.trim_matches('/').replace('\\', "/");
     if rel.is_empty() || rel.split('/').any(|p| p == "..") {
@@ -198,6 +211,7 @@ fn apply_mkdir(work: &Path, folder: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn apply_add(work: &Path, archive_parent: &str, sources: &[String]) -> Result<(), CommandError> {
     let parent_rel = archive_parent.trim_matches('/').replace('\\', "/");
     if parent_rel.split('/').any(|p| p == "..") {
@@ -230,6 +244,7 @@ fn apply_add(work: &Path, archive_parent: &str, sources: &[String]) -> Result<()
     Ok(())
 }
 
+#[allow(dead_code)]
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), CommandError> {
     fs::create_dir_all(dest)
         .map_err(|e| edit_error("write_failed", format!("Cannot create directory: {e}")))?;
@@ -252,6 +267,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), CommandError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn apply_replace(work: &Path, entry_path: &str, source_file: &Path) -> Result<(), CommandError> {
     let rel = entry_path.trim_matches('/').replace('\\', "/");
     if rel.is_empty() || rel.split('/').any(|p| p == "..") {
@@ -271,6 +287,7 @@ fn apply_replace(work: &Path, entry_path: &str, source_file: &Path) -> Result<()
     Ok(())
 }
 
+#[allow(dead_code)]
 fn repack_edit(
     archive_path: &Path,
     operation_id: &str,
@@ -299,6 +316,7 @@ fn repack_edit(
             operation_id: operation_id.into(),
             destination: archive_path.to_string_lossy().into_owned(),
             members_written: members,
+            strategy_used: Some("repack".into()),
         })
     })();
     remove_tree(&work);
@@ -311,20 +329,31 @@ pub fn delete_entries(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
         ArchiveFormat::Zip => {
             zip_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit)
         }
+        ArchiveFormat::SevenZ => sevenz_edit::delete_entries(
+            archive_path,
+            paths,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz
-        | ArchiveFormat::SevenZ => {
-            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
-                apply_deletes(work, paths)
-            })
-        }
+        | ArchiveFormat::TarXz => tar_edit::delete_entries(
+            archive_path,
+            paths,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),
@@ -339,20 +368,33 @@ pub fn rename_entry(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
         ArchiveFormat::Zip => {
             zip_edit::rename_entry(archive_path, from_path, to_path, operation_id, cancelled, emit)
         }
+        ArchiveFormat::SevenZ => sevenz_edit::rename_entry(
+            archive_path,
+            from_path,
+            to_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz
-        | ArchiveFormat::SevenZ => {
-            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
-                apply_rename(work, from_path, to_path)
-            })
-        }
+        | ArchiveFormat::TarXz => tar_edit::rename_entry(
+            archive_path,
+            from_path,
+            to_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),
@@ -366,20 +408,36 @@ pub fn create_folder(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
-        ArchiveFormat::Zip => {
-            zip_edit::create_folder(archive_path, folder_path, operation_id, cancelled, emit)
-        }
+        ArchiveFormat::Zip => zip_edit::create_folder(
+            archive_path,
+            folder_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
+        ArchiveFormat::SevenZ => sevenz_edit::create_folder(
+            archive_path,
+            folder_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz
-        | ArchiveFormat::SevenZ => {
-            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
-                apply_mkdir(work, folder_path)
-            })
-        }
+        | ArchiveFormat::TarXz => tar_edit::create_folder(
+            archive_path,
+            folder_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),
@@ -394,6 +452,7 @@ pub fn add_paths(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
         ArchiveFormat::Zip => zip_edit::add_paths(
@@ -403,16 +462,29 @@ pub fn add_paths(
             operation_id,
             cancelled,
             emit,
+            options,
+        ),
+        ArchiveFormat::SevenZ => sevenz_edit::add_paths(
+            archive_path,
+            source_paths,
+            archive_parent,
+            operation_id,
+            cancelled,
+            emit,
+            options,
         ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz
-        | ArchiveFormat::SevenZ => {
-            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
-                apply_add(work, archive_parent, source_paths)
-            })
-        }
+        | ArchiveFormat::TarXz => tar_edit::add_paths(
+            archive_path,
+            source_paths,
+            archive_parent,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),
@@ -427,6 +499,7 @@ pub fn replace_file(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
         ArchiveFormat::Zip => zip_edit::replace_file(
@@ -437,15 +510,27 @@ pub fn replace_file(
             cancelled,
             emit,
         ),
+        ArchiveFormat::SevenZ => sevenz_edit::replace_file(
+            archive_path,
+            entry_path,
+            source_file,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz
-        | ArchiveFormat::SevenZ => {
-            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
-                apply_replace(work, entry_path, source_file)
-            })
-        }
+        | ArchiveFormat::TarXz => tar_edit::replace_file(
+            archive_path,
+            entry_path,
+            source_file,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),
@@ -461,6 +546,7 @@ pub fn move_entries(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
         ArchiveFormat::Zip => zip_edit::move_entries(
@@ -471,58 +557,27 @@ pub fn move_entries(
             cancelled,
             emit,
         ),
+        ArchiveFormat::SevenZ => sevenz_edit::move_entries(
+            archive_path,
+            sources,
+            dest_folder,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz
-        | ArchiveFormat::SevenZ => {
-            let dest = if dest_folder.is_empty() || dest_folder == "/" {
-                String::new()
-            } else {
-                dest_folder.trim_matches('/').replace('\\', "/")
-            };
-            // Top-level sources only (drop nested when parent selected).
-            let mut from_paths: Vec<String> = sources
-                .iter()
-                .map(|s| s.trim_matches('/').replace('\\', "/"))
-                .filter(|s| !s.is_empty())
-                .collect();
-            from_paths.sort();
-            from_paths.dedup();
-            let tops: Vec<String> = from_paths
-                .iter()
-                .filter(|p| {
-                    !from_paths
-                        .iter()
-                        .any(|o| o != *p && p.starts_with(&(o.clone() + "/")))
-                })
-                .cloned()
-                .collect();
-
-            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
-                for from in &tops {
-                    if !dest.is_empty()
-                        && (dest == *from || dest.starts_with(&(from.clone() + "/")))
-                    {
-                        return Err(edit_error(
-                            "invalid_entry",
-                            format!("Cannot move '{from}' into itself or a subfolder."),
-                        ));
-                    }
-                    let leaf = from.rsplit('/').next().unwrap_or(from.as_str());
-                    let to = if dest.is_empty() {
-                        leaf.to_string()
-                    } else {
-                        format!("{dest}/{leaf}")
-                    };
-                    if from == &to {
-                        continue;
-                    }
-                    apply_rename(work, from, &to)?;
-                }
-                Ok(())
-            })
-        }
+        | ArchiveFormat::TarXz => tar_edit::move_entries(
+            archive_path,
+            sources,
+            dest_folder,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),

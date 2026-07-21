@@ -78,6 +78,7 @@ fn finish_summary(
         total_files: tested.max(1),
         current_file: "Completed".into(),
         percentage: 100.0,
+        phase: None,
     });
     TestArchiveSummary {
         operation_id: operation_id.into(),
@@ -135,6 +136,7 @@ fn test_zip(
                 } else {
                     tested as f32 * 100.0 / progress_total as f32
                 },
+                phase: None,
             });
             last_progress = Instant::now();
         }
@@ -212,6 +214,7 @@ fn test_tar_reader<R: Read>(
                 total_files: tested.saturating_add(1).max(1),
                 current_file: name.clone(),
                 percentage: 0.0,
+                phase: None,
             });
             last_progress = Instant::now();
         }
@@ -303,6 +306,7 @@ fn test_single_named(
         total_files: 1,
         current_file: label.into(),
         percentage: 0.0,
+        phase: None,
     });
     match drain_reader(&mut reader, cancelled) {
         Ok(()) => Ok(finish_summary(operation_id, 1, 1, 0, Vec::new(), emit)),
@@ -427,6 +431,7 @@ fn test_sevenz(
                 } else {
                     tested as f32 * 100.0 / total as f32
                 },
+                phase: None,
             });
             last = Instant::now();
         }

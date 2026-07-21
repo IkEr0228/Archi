@@ -1,5 +1,6 @@
 use crate::models::ConflictDecision;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -28,14 +29,44 @@ impl Default for OperationState {
     }
 }
 
+struct RegistryInner {
+    active: HashMap<String, Arc<OperationState>>,
+    /// operation_id → normalized archive path lock key (edit ops only).
+    edit_archive_keys: HashMap<String, String>,
+    /// Set of archive path keys currently locked by an active edit.
+    locked_archives: HashSet<String>,
+}
+
+impl Default for RegistryInner {
+    fn default() -> Self {
+        Self {
+            active: HashMap::new(),
+            edit_archive_keys: HashMap::new(),
+            locked_archives: HashSet::new(),
+        }
+    }
+}
+
+/// Normalize an archive path for lock comparison (canonicalize when possible, lowercase on Windows).
+pub fn normalize_archive_lock_key(path: &str) -> String {
+    let p = Path::new(path);
+    let raw = match p.canonicalize() {
+        Ok(canon) => canon.to_string_lossy().into_owned(),
+        Err(_) => p.as_os_str().to_string_lossy().into_owned(),
+    };
+    // Case-fold for Windows path comparisons; harmless elsewhere for lock keys.
+    raw.to_lowercase()
+}
+
 #[derive(Clone, Default)]
-pub struct OperationRegistry(Arc<Mutex<HashMap<String, Arc<OperationState>>>>);
+pub struct OperationRegistry(Arc<Mutex<RegistryInner>>);
 
 impl OperationRegistry {
     fn get_state(&self, id: &str) -> Result<Arc<OperationState>, String> {
         self.0
             .lock()
             .map_err(|_| "Operation registry is unavailable.".to_string())?
+            .active
             .get(id)
             .cloned()
             .ok_or_else(|| format!("Unknown operation ID: {id}"))
@@ -46,16 +77,48 @@ impl OperationRegistry {
             return Err("Operation ID is empty.".into());
         }
 
-        let mut active = self
+        let mut inner = self
             .0
             .lock()
             .map_err(|_| "Operation registry is unavailable.")?;
-        if active.contains_key(id) {
+        if inner.active.contains_key(id) {
             return Err("Operation ID is already active.".into());
         }
 
         let state = Arc::new(OperationState::default());
-        active.insert(id.into(), state.clone());
+        inner.active.insert(id.into(), state.clone());
+        Ok(state)
+    }
+
+    /// Start an edit operation that exclusively locks `archive_path`.
+    /// Fails if another active edit already holds a lock on the same (normalized) path.
+    pub fn start_edit(&self, id: &str, archive_path: &str) -> Result<Arc<OperationState>, String> {
+        if id.is_empty() {
+            return Err("Operation ID is empty.".into());
+        }
+        if archive_path.is_empty() {
+            return Err("Archive path is empty.".into());
+        }
+
+        let lock_key = normalize_archive_lock_key(archive_path);
+
+        let mut inner = self
+            .0
+            .lock()
+            .map_err(|_| "Operation registry is unavailable.")?;
+        if inner.active.contains_key(id) {
+            return Err("Operation ID is already active.".into());
+        }
+        if inner.locked_archives.contains(&lock_key) {
+            return Err(format!(
+                "Archive is already being edited by another operation: {archive_path}"
+            ));
+        }
+
+        let state = Arc::new(OperationState::default());
+        inner.active.insert(id.into(), state.clone());
+        inner.locked_archives.insert(lock_key.clone());
+        inner.edit_archive_keys.insert(id.into(), lock_key);
         Ok(state)
     }
 
@@ -64,7 +127,7 @@ impl OperationRegistry {
             .0
             .lock()
             .ok()
-            .and_then(|active| active.get(id).cloned())
+            .and_then(|active| active.active.get(id).cloned())
         {
             Some(state) => state,
             None => return false,
@@ -80,8 +143,8 @@ impl OperationRegistry {
     }
 
     pub fn finish(&self, id: &str) {
-        if let Ok(mut active) = self.0.lock() {
-            if let Some(state) = active.remove(id) {
+        if let Ok(mut inner) = self.0.lock() {
+            if let Some(state) = inner.active.remove(id) {
                 if let Ok(mut waiter) = state.waiter.lock() {
                     if let Some(pending) = waiter.take() {
                         let _ = pending.tx.send(ConflictDecision::Cancel);
@@ -90,6 +153,10 @@ impl OperationRegistry {
                 if let Ok(mut decision_rx) = state.decision_rx.lock() {
                     let _ = decision_rx.take();
                 }
+            }
+            // Release archive path lock for edit ops.
+            if let Some(key) = inner.edit_archive_keys.remove(id) {
+                inner.locked_archives.remove(&key);
             }
         }
     }
@@ -255,5 +322,42 @@ impl OperationRegistry {
     pub fn peek_apply_policy(&self, operation_id: &str) -> Option<ConflictDecision> {
         let state = self.get_state(operation_id).ok()?;
         state.apply_policy.lock().ok().and_then(|policy| *policy)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn start_edit_locks_archive_path() {
+        let reg = OperationRegistry::default();
+        let _a = reg.start_edit("op-a", r"C:\Archives\foo.zip").unwrap();
+        let err = match reg.start_edit("op-b", r"C:\Archives\foo.zip") {
+            Ok(_) => panic!("same path must be locked"),
+            Err(e) => e,
+        };
+        assert!(err.contains("already being edited"));
+        reg.finish("op-a");
+        let _b = reg.start_edit("op-b", r"C:\Archives\foo.zip").unwrap();
+        reg.finish("op-b");
+    }
+
+    #[test]
+    fn start_edit_case_insensitive_on_windows_key() {
+        let reg = OperationRegistry::default();
+        let _a = reg.start_edit("op-a", r"C:\Archives\Foo.ZIP").unwrap();
+        let err = reg.start_edit("op-b", r"c:\archives\foo.zip");
+        assert!(err.is_err());
+        reg.finish("op-a");
+    }
+
+    #[test]
+    fn plain_start_does_not_lock_path() {
+        let reg = OperationRegistry::default();
+        let _a = reg.start("extract-1").unwrap();
+        let _b = reg.start_edit("edit-1", r"C:\Archives\foo.zip").unwrap();
+        reg.finish("extract-1");
+        reg.finish("edit-1");
     }
 }

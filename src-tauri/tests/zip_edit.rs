@@ -1,6 +1,7 @@
 mod common;
 
 use archi_backend_lib::archive::open_archive;
+use archi_backend_lib::models::{EditOptions, EditStrategyPref};
 use archi_backend_lib::zip_edit::{
     add_paths, create_folder, delete_entries, rename_entry, replace_file,
 };
@@ -10,6 +11,17 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use zip::ZipArchive;
+
+fn default_edit_options() -> EditOptions {
+    EditOptions::default()
+}
+
+fn compact_edit_options() -> EditOptions {
+    EditOptions {
+        strategy: Some(EditStrategyPref::PreferCompact),
+        ..Default::default()
+    }
+}
 
 fn temporary_edit_archives(root: &Path) -> Vec<PathBuf> {
     fs::read_dir(root)
@@ -282,12 +294,14 @@ fn create_folder_adds_directory_entry() {
         "edit-create-folder-1",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap();
 
     assert_eq!(summary.operation_id, "edit-create-folder-1");
     assert_eq!(summary.destination, zip_path.to_string_lossy());
-    assert!(summary.members_written >= 2);
+    assert!(summary.members_written >= 1);
+    assert_eq!(summary.strategy_used.as_deref(), Some("append"));
     assert!(ZipArchive::new(File::open(&zip_path).unwrap()).is_ok());
 
     let names = entry_names(&zip_path);
@@ -314,6 +328,7 @@ fn create_folder_rejects_existing_path() {
         "edit-create-folder-exists",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap_err();
 
@@ -343,10 +358,12 @@ fn add_file_into_nested_parent() {
         "edit-add-1",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap();
 
     assert_eq!(summary.operation_id, "edit-add-1");
+    assert_eq!(summary.strategy_used.as_deref(), Some("append"));
     assert!(ZipArchive::new(File::open(&zip_path).unwrap()).is_ok());
 
     let names = entry_names(&zip_path);
@@ -369,15 +386,17 @@ fn add_directory_includes_root_and_children() {
     fs::write(dir.join("a.txt"), b"aaa").unwrap();
     fs::write(dir.join("sub").join("b.txt"), b"bbb").unwrap();
 
-    add_paths(
+    let summary = add_paths(
         &zip_path,
         &[dir.to_string_lossy().into_owned()],
         "",
         "edit-add-dir",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap();
+    assert_eq!(summary.strategy_used.as_deref(), Some("append"));
 
     let names = entry_names(&zip_path);
     assert!(names.iter().any(|n| n == "payload/a.txt"));
@@ -405,6 +424,7 @@ fn add_rejects_existing_target() {
         "edit-add-exists",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap_err();
 
@@ -429,6 +449,7 @@ fn add_rejects_parent_directory_containing_open_zip() {
         "edit-add-containment",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap_err();
 
@@ -457,6 +478,7 @@ fn add_rejects_file_equal_to_virtual_folder_prefix() {
         "edit-add-folder-prefix",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap_err();
 
@@ -485,6 +507,7 @@ fn add_rejects_under_existing_file_as_parent() {
         "edit-add-file-parent",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap_err();
 
@@ -492,6 +515,70 @@ fn add_rejects_under_existing_file_as_parent() {
     assert_eq!(entry_bytes(&zip_path, "docs"), b"file-body");
     assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"k");
     assert!(temporary_edit_archives(&root).is_empty());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn create_folder_prefer_compact_uses_rebuild() {
+    let root = common::temp_dir("zip-edit-create-folder-compact");
+    let zip_path = root.join("sample.zip");
+    common::write_zip(&zip_path, &[("keep.txt", b"keep")]);
+
+    let mut phases = Vec::new();
+    let summary = create_folder(
+        &zip_path,
+        "compact-folder",
+        "edit-create-folder-compact",
+        &AtomicBool::new(false),
+        |p| {
+            if let Some(phase) = p.phase {
+                phases.push(phase);
+            }
+        },
+        &compact_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("rebuild"));
+    assert!(phases.iter().any(|p| p == "rebuild"));
+    assert!(!phases.iter().any(|p| p == "append"));
+    assert!(entry_names(&zip_path)
+        .iter()
+        .any(|n| n == "compact-folder"));
+    assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"keep");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn add_file_emits_append_phase() {
+    let root = common::temp_dir("zip-edit-add-phase");
+    let zip_path = root.join("sample.zip");
+    common::write_zip(&zip_path, &[("keep.txt", b"k")]);
+    let source = root.join("new.txt");
+    fs::write(&source, b"new").unwrap();
+
+    let mut phases = Vec::new();
+    let summary = add_paths(
+        &zip_path,
+        &[source.to_string_lossy().into_owned()],
+        "",
+        "edit-add-phase",
+        &AtomicBool::new(false),
+        |p| {
+            if let Some(phase) = p.phase {
+                phases.push(phase);
+            }
+        },
+        &default_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("append"));
+    assert!(phases.iter().any(|p| p == "append"));
+    assert_eq!(entry_bytes(&zip_path, "new.txt"), b"new");
+    assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"k");
 
     fs::remove_dir_all(root).unwrap();
 }

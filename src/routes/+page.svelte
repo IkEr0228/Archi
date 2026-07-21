@@ -73,6 +73,8 @@
     current_file: string;
     extracted_files?: number;
     total_files?: number;
+    /** Optional phase: plan | append | rebuild | extract | repack | finalize */
+    phase?: string | null;
   }
 
   interface OperationSummary {
@@ -100,6 +102,7 @@
     operation_id: string;
     destination: string;
     members_written: number;
+    strategy_used?: string | null;
   }
 
   const emptyStats: ArchiveStats = {
@@ -202,6 +205,7 @@
   let showProgressModal = $state(false);
   let progressPercentage = $state(0);
   let progressText = $state('');
+  let progressPhase = $state('');
 
   // Extract conflict dialog state
   let conflictPrompt = $state<null | {
@@ -339,15 +343,18 @@
       const payload = pendingProgress;
       pendingProgress = null;
       if (!payload || !showProgressModal) return;
-      // Skip no-op updates (same % + current file).
+      const nextPhase = payload.phase ?? '';
+      // Skip no-op updates (same % + current file + phase).
       if (
         payload.percentage === progressPercentage &&
-        payload.current_file === progressText
+        payload.current_file === progressText &&
+        nextPhase === progressPhase
       ) {
         return;
       }
       progressPercentage = payload.percentage;
       progressText = payload.current_file;
+      progressPhase = nextPhase;
     };
 
     const updateProgress = (event: { payload: unknown }) => {
@@ -509,6 +516,7 @@
       activeOperation = { id: operationId, kind: 'test' };
       showProgressModal = true;
       progressPercentage = 0;
+      progressPhase = '';
       progressText = 'Starting integrity test...';
       errorMessage = '';
 
@@ -590,6 +598,7 @@
       activeOperation = { id: operationId, kind: 'extract' };
       showProgressModal = true;
       progressPercentage = 0;
+      progressPhase = '';
       progressText = 'Starting extraction...';
 
       const selected =
@@ -728,6 +737,7 @@
       activeOperation = { id: operationId, kind: 'create' };
       showProgressModal = true;
       progressPercentage = 0;
+      progressPhase = '';
       progressText = 'Starting archive creation...';
 
       const summary = await invoke<OperationSummary>('create_archive_command', {
@@ -831,6 +841,7 @@
       activeOperation = { id: operationId, kind: 'edit' };
       showProgressModal = true;
       progressPercentage = 0;
+      progressPhase = '';
       progressText = `Starting ${label}...`;
       errorMessage = '';
       operationStatus = `${label}...`;
@@ -865,7 +876,7 @@
     await runEditOperation('Delete', (operationId) =>
       invoke<EditSummary>('delete_archive_entries_command', {
         operationId,
-        zipPath: currentArchivePath,
+        archivePath: currentArchivePath,
         paths
       })
     );
@@ -892,7 +903,7 @@
     await runEditOperation('Rename', (operationId) =>
       invoke<EditSummary>('rename_archive_entry_command', {
         operationId,
-        zipPath: currentArchivePath,
+        archivePath: currentArchivePath,
         fromPath,
         toPath
       })
@@ -914,7 +925,7 @@
     await runEditOperation('New folder', (operationId) =>
       invoke<EditSummary>('create_archive_folder_command', {
         operationId,
-        zipPath: currentArchivePath,
+        archivePath: currentArchivePath,
         folderPath
       })
     );
@@ -927,7 +938,7 @@
     await runEditOperation('Add', (operationId) =>
       invoke<EditSummary>('add_to_archive_command', {
         operationId,
-        zipPath: currentArchivePath,
+        archivePath: currentArchivePath,
         sourcePaths: sources,
         archiveParent
       })
@@ -976,7 +987,7 @@
     await runEditOperation('Move', (operationId) =>
       invoke<EditSummary>('move_archive_entries_command', {
         operationId,
-        zipPath: currentArchivePath,
+        archivePath: currentArchivePath,
         sourcePaths: sources,
         destFolder: dest
       })
@@ -995,7 +1006,7 @@
       await runEditOperation('Replace', (operationId) =>
         invoke<EditSummary>('replace_archive_file_command', {
           operationId,
-          zipPath: currentArchivePath,
+          archivePath: currentArchivePath,
           entryPath,
           sourceFile
         })
@@ -1172,7 +1183,7 @@
           <div class="progress-bar" style="width: {progressPercentage}%;"></div>
         </div>
         <div class="progress-file">
-          {progressText}
+          {#if progressPhase}{progressPhase} · {/if}{progressText}
         </div>
       </div>
       <div class="modal-footer">

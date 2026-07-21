@@ -1,5 +1,7 @@
 use crate::extraction::normalize_entry_name;
-use crate::models::{CommandError, OperationProgress};
+use crate::models::{
+    CommandError, EditOptions, EditStrategyPref, OperationProgress,
+};
 
 pub use crate::models::EditSummary;
 use crate::security::{is_link_or_reparse_point, validate_entry_path};
@@ -14,6 +16,25 @@ use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::io_perf::{ProgressGate, IO_BUFFER_SIZE as BUFFER_SIZE};
+
+/// Prefer append for Auto / PreferFast / unspecified; PreferCompact always rebuilds.
+fn should_try_append(options: &EditOptions) -> bool {
+    !matches!(options.strategy, Some(EditStrategyPref::PreferCompact))
+}
+
+/// New directory / file members only (no Copy) — what append actually writes.
+fn new_members_only(planned: &[RebuildMember]) -> Vec<RebuildMember> {
+    planned
+        .iter()
+        .filter(|m| {
+            matches!(
+                m,
+                RebuildMember::NewDirectory { .. } | RebuildMember::NewFile { .. }
+            )
+        })
+        .cloned()
+        .collect()
+}
 
 #[derive(Clone)]
 enum RebuildMember {
@@ -119,6 +140,29 @@ fn create_temporary_edit_archive(zip_path: &Path) -> Result<(PathBuf, File), Com
         "temp_create_failed",
         "Cannot choose a unique temporary archive path.",
     ))
+}
+
+/// Byte-for-byte copy of `zip_path` to a sibling temp file, opened for read+write+seek (append).
+fn create_temporary_archive_copy(zip_path: &Path) -> Result<(PathBuf, File), CommandError> {
+    let (temp_path, temp_file) = create_temporary_edit_archive(zip_path)?;
+    drop(temp_file);
+    if let Err(error) = fs::copy(zip_path, &temp_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(edit_error(
+            "temp_create_failed",
+            format!("Cannot copy archive for append: {error}"),
+        ));
+    }
+    match OpenOptions::new().read(true).write(true).open(&temp_path) {
+        Ok(file) => Ok((temp_path, file)),
+        Err(error) => {
+            let _ = fs::remove_file(&temp_path);
+            Err(edit_error(
+                "temp_create_failed",
+                format!("Cannot open temporary archive for append: {error}"),
+            ))
+        }
+    }
 }
 
 fn cleanup_temp(temp_path: &Path, error: &mut CommandError) {
@@ -1004,6 +1048,7 @@ fn rebuild_archive(
                     total_files,
                     current_file: current_file.clone(),
                     percentage: progress_percentage(processed, total_files),
+                    phase: Some("rebuild".into()),
                 });
             }
 
@@ -1091,6 +1136,7 @@ fn rebuild_archive(
             operation_id: operation_id.into(),
             destination: zip_path.to_string_lossy().into_owned(),
             members_written: processed,
+            strategy_used: Some("rebuild".into()),
         })
     })();
 
@@ -1102,6 +1148,7 @@ fn rebuild_archive(
                 total_files: summary.members_written,
                 current_file: "Completed".into(),
                 percentage: 100.0,
+                phase: Some("rebuild".into()),
             });
             Ok(summary)
         }
@@ -1110,6 +1157,160 @@ fn rebuild_archive(
             Err(error)
         }
     }
+}
+
+/// Append only new directory/file members onto a byte-copy of the archive via `ZipWriter::new_append`.
+///
+/// Does not rewrite existing central-directory entries; fails (caller may fall back to rebuild)
+/// on unsupported ZIP features or I/O errors. Never mutates `zip_path` until publish succeeds.
+fn append_to_archive(
+    zip_path: &Path,
+    planned: &[RebuildMember],
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    mut emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    if operation_id.is_empty() {
+        return Err(edit_error("invalid_operation", "Operation ID is empty."));
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(cancelled_error());
+    }
+
+    let to_add = new_members_only(planned);
+    if to_add.is_empty() {
+        return Err(edit_error(
+            "invalid_operation",
+            "Append strategy requires at least one new member.",
+        ));
+    }
+
+    let total_files = to_add.len() as u64;
+    let (temp_path, temp_file) = create_temporary_archive_copy(zip_path)?;
+
+    let result = (|| -> Result<EditSummary, CommandError> {
+        let mut zip = ZipWriter::new_append(temp_file).map_err(|error| {
+            edit_error(
+                "append_unsupported",
+                format!("Cannot open ZIP for append: {error}"),
+            )
+        })?;
+
+        let mut processed = 0_u64;
+        let mut progress_gate = ProgressGate::new();
+
+        for member in &to_add {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(cancelled_error());
+            }
+
+            let current_file = member.out_path().to_string();
+            if progress_gate.should_emit() {
+                emit(OperationProgress {
+                    operation_id: operation_id.into(),
+                    extracted_files: processed,
+                    total_files,
+                    current_file: current_file.clone(),
+                    percentage: progress_percentage(processed, total_files),
+                    phase: Some("append".into()),
+                });
+            }
+
+            match member {
+                RebuildMember::NewDirectory { path } => {
+                    let out_name = zip_output_name(path, true);
+                    zip.add_directory(&out_name, FileOptions::default())
+                        .map_err(|error| {
+                            edit_error(
+                                "write_failed",
+                                format!("Cannot write directory entry: {error}"),
+                            )
+                        })?;
+                }
+                RebuildMember::NewFile { path, source } => {
+                    write_new_file_entry(&mut zip, path, source, cancelled)?;
+                }
+                RebuildMember::Copy { .. } => unreachable!("filtered by new_members_only"),
+            }
+
+            processed += 1;
+        }
+
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(cancelled_error());
+        }
+
+        let temp_file = zip.finish().map_err(|error| {
+            edit_error(
+                "write_failed",
+                format!("Cannot finalize temporary ZIP: {error}"),
+            )
+        })?;
+        temp_file.sync_all().map_err(|error| {
+            edit_error(
+                "write_failed",
+                format!("Cannot sync temporary ZIP: {error}"),
+            )
+        })?;
+        drop(temp_file);
+
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(cancelled_error());
+        }
+
+        publish_temp_archive(&temp_path, zip_path).map_err(|error| {
+            edit_error(
+                "finalize_failed",
+                format!("Cannot replace archive with edited copy: {error}"),
+            )
+        })?;
+
+        Ok(EditSummary {
+            operation_id: operation_id.into(),
+            destination: zip_path.to_string_lossy().into_owned(),
+            members_written: processed,
+            strategy_used: Some("append".into()),
+        })
+    })();
+
+    match result {
+        Ok(summary) => {
+            emit(OperationProgress {
+                operation_id: operation_id.into(),
+                extracted_files: summary.members_written,
+                total_files: summary.members_written,
+                current_file: "Completed".into(),
+                percentage: 100.0,
+                phase: Some("append".into()),
+            });
+            Ok(summary)
+        }
+        Err(mut error) => {
+            cleanup_temp(&temp_path, &mut error);
+            Err(error)
+        }
+    }
+}
+
+/// Try ZIP append when strategy allows; on any non-cancel append failure, full rebuild.
+fn apply_add_like_edit(
+    zip_path: &Path,
+    planned: &[RebuildMember],
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    mut emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
+) -> Result<EditSummary, CommandError> {
+    if should_try_append(options) {
+        match append_to_archive(zip_path, planned, operation_id, cancelled, &mut emit) {
+            Ok(summary) => return Ok(summary),
+            Err(error) if error.code == "cancelled" => return Err(error),
+            Err(_) => {
+                // Fall through to full rebuild (unsupported ZIP features, open/write errors).
+            }
+        }
+    }
+    rebuild_archive(zip_path, planned, operation_id, cancelled, emit)
 }
 
 fn require_zip_file(zip_path: &Path) -> Result<(), CommandError> {
@@ -1167,23 +1368,27 @@ pub fn move_entries(
 }
 
 /// Creates an empty directory entry in the ZIP archive.
+///
+/// Uses append when strategy allows (`Auto` / `PreferFast` / default); falls back to rebuild.
 pub fn create_folder(
     zip_path: &Path,
     folder_path: &str,
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_zip_file(zip_path)?;
     let (_, members) = open_source_members(zip_path)?;
     let planned = plan_create_folder(&members, folder_path)?;
-    rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)
+    apply_add_like_edit(zip_path, &planned, operation_id, cancelled, emit, options)
 }
 
 /// Adds files and directories from disk into the ZIP under `archive_parent`.
 ///
 /// Directory sources include their root folder name (like create with include_root).
 /// Rejects symlink/reparse sources and existing archive targets.
+/// Uses append when strategy allows (`Auto` / `PreferFast` / default); falls back to rebuild.
 pub fn add_paths(
     zip_path: &Path,
     source_paths: &[String],
@@ -1191,11 +1396,12 @@ pub fn add_paths(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_zip_file(zip_path)?;
     let (_, members) = open_source_members(zip_path)?;
     let planned = plan_add_paths(&members, source_paths, archive_parent, zip_path, cancelled)?;
-    rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)
+    apply_add_like_edit(zip_path, &planned, operation_id, cancelled, emit, options)
 }
 
 /// Replaces an existing file entry's content from a disk file (same archive path).

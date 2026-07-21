@@ -6,8 +6,8 @@ use crate::file_assoc::{
 };
 
 use crate::models::{
-    ArchiveInfo, CommandError, ConflictDecision, CreateFormat, CreateOptions, EditSummary,
-    ExtractConflictEvent, OperationSummary, TestArchiveSummary,
+    ArchiveInfo, CommandError, ConflictDecision, CreateFormat, CreateOptions, EditOptions,
+    EditSummary, ExtractConflictEvent, OperationSummary, TestArchiveSummary,
 };
 use crate::operations::OperationRegistry;
 use crate::security::is_link_or_reparse_point;
@@ -248,22 +248,25 @@ pub async fn delete_archive_entries_command(
     app: tauri::AppHandle,
     registry: State<'_, OperationRegistry>,
     operation_id: String,
-    zip_path: String,
+    archive_path: String,
     paths: Vec<String>,
+    options: Option<EditOptions>,
 ) -> Result<EditSummary, CommandError> {
     let state = registry
-        .start(&operation_id)
+        .start_edit(&operation_id, &archive_path)
         .map_err(|message| CommandError::new("operation_failed", message))?;
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
     let result = tauri::async_runtime::spawn_blocking(move || {
         delete_entries(
-            Path::new(&zip_path),
+            Path::new(&archive_path),
             &paths,
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
         )
     })
     .await;
@@ -276,24 +279,27 @@ pub async fn rename_archive_entry_command(
     app: tauri::AppHandle,
     registry: State<'_, OperationRegistry>,
     operation_id: String,
-    zip_path: String,
+    archive_path: String,
     from_path: String,
     to_path: String,
+    options: Option<EditOptions>,
 ) -> Result<EditSummary, CommandError> {
     let state = registry
-        .start(&operation_id)
+        .start_edit(&operation_id, &archive_path)
         .map_err(|message| CommandError::new("operation_failed", message))?;
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
     let result = tauri::async_runtime::spawn_blocking(move || {
         rename_entry(
-            Path::new(&zip_path),
+            Path::new(&archive_path),
             &from_path,
             &to_path,
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
         )
     })
     .await;
@@ -306,22 +312,25 @@ pub async fn create_archive_folder_command(
     app: tauri::AppHandle,
     registry: State<'_, OperationRegistry>,
     operation_id: String,
-    zip_path: String,
+    archive_path: String,
     folder_path: String,
+    options: Option<EditOptions>,
 ) -> Result<EditSummary, CommandError> {
     let state = registry
-        .start(&operation_id)
+        .start_edit(&operation_id, &archive_path)
         .map_err(|message| CommandError::new("operation_failed", message))?;
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
     let result = tauri::async_runtime::spawn_blocking(move || {
         create_folder(
-            Path::new(&zip_path),
+            Path::new(&archive_path),
             &folder_path,
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
         )
     })
     .await;
@@ -334,24 +343,27 @@ pub async fn add_to_archive_command(
     app: tauri::AppHandle,
     registry: State<'_, OperationRegistry>,
     operation_id: String,
-    zip_path: String,
+    archive_path: String,
     source_paths: Vec<String>,
     archive_parent: String,
+    options: Option<EditOptions>,
 ) -> Result<EditSummary, CommandError> {
     let state = registry
-        .start(&operation_id)
+        .start_edit(&operation_id, &archive_path)
         .map_err(|message| CommandError::new("operation_failed", message))?;
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
     let result = tauri::async_runtime::spawn_blocking(move || {
         add_paths(
-            Path::new(&zip_path),
+            Path::new(&archive_path),
             &source_paths,
             &archive_parent,
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
         )
     })
     .await;
@@ -364,24 +376,27 @@ pub async fn replace_archive_file_command(
     app: tauri::AppHandle,
     registry: State<'_, OperationRegistry>,
     operation_id: String,
-    zip_path: String,
+    archive_path: String,
     entry_path: String,
     source_file: String,
+    options: Option<EditOptions>,
 ) -> Result<EditSummary, CommandError> {
     let state = registry
-        .start(&operation_id)
+        .start_edit(&operation_id, &archive_path)
         .map_err(|message| CommandError::new("operation_failed", message))?;
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
     let result = tauri::async_runtime::spawn_blocking(move || {
         replace_file(
-            Path::new(&zip_path),
+            Path::new(&archive_path),
             &entry_path,
             Path::new(&source_file),
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
         )
     })
     .await;
@@ -395,24 +410,27 @@ pub async fn move_archive_entries_command(
     app: tauri::AppHandle,
     registry: State<'_, OperationRegistry>,
     operation_id: String,
-    zip_path: String,
+    archive_path: String,
     source_paths: Vec<String>,
     dest_folder: String,
+    options: Option<EditOptions>,
 ) -> Result<EditSummary, CommandError> {
     let state = registry
-        .start(&operation_id)
+        .start_edit(&operation_id, &archive_path)
         .map_err(|message| CommandError::new("operation_failed", message))?;
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
     let result = tauri::async_runtime::spawn_blocking(move || {
         move_entries(
-            Path::new(&zip_path),
+            Path::new(&archive_path),
             &source_paths,
             &dest_folder,
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
         )
     })
     .await;

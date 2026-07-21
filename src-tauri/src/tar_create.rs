@@ -72,6 +72,7 @@ fn append_entries<W: Write>(
                 total_files,
                 current_file: entry.archive_path.clone(),
                 percentage: progress_percentage(processed_files, total_files),
+                phase: None,
             });
         }
 
@@ -332,6 +333,7 @@ pub fn create_tar_archive(
                 total_files: summary.total_files,
                 current_file: "Completed".into(),
                 percentage: 100.0,
+                phase: None,
             });
             Ok(summary)
         }

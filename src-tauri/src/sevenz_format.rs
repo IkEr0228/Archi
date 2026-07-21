@@ -367,6 +367,7 @@ pub fn extract_sevenz(
                 total_files,
                 current_file: normalized.clone(),
                 percentage: progress_percentage(processed, total_files),
+                phase: None,
             });
         }
 
@@ -465,6 +466,7 @@ pub fn extract_sevenz(
         total_files,
         current_file: "Completed".into(),
         percentage: 100.0,
+        phase: None,
     });
 
     Ok(OperationSummary {
@@ -747,6 +749,7 @@ pub fn create_sevenz_archive(
                     total_files,
                     current_file: entry.archive_path.clone(),
                     percentage: progress_percentage(processed, total_files),
+                    phase: None,
                 });
             }
             if entry.is_directory {
@@ -813,6 +816,7 @@ pub fn create_sevenz_archive(
                 total_files: summary.total_files,
                 current_file: "Completed".into(),
                 percentage: 100.0,
+                phase: None,
             });
             Ok(summary)
         }
