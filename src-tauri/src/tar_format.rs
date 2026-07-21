@@ -10,8 +10,8 @@ use crate::models::{
     OperationProgress, OperationSummary,
 };
 use crate::security::{
-    assess_archive, is_link_or_reparse_point, safe_destination_path_under_canonical,
-    validate_entry_path, ArchiveRiskInput,
+    assess_archive, destination_path_error_code, is_link_or_reparse_point,
+    safe_destination_path_under_canonical, validate_entry_path, ArchiveRiskInput,
 };
 #[cfg(windows)]
 use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory};
@@ -739,7 +739,7 @@ fn extract_tar_reader<R: Read>(
             let dest =
                 safe_destination_path_under_canonical(extract_root, &name).map_err(|message| {
                     CommandError {
-                        code: "invalid_entry".into(),
+                        code: destination_path_error_code(&message).into(),
                         message,
                         path: Some(name.clone()),
                     }

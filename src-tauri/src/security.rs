@@ -78,6 +78,20 @@ pub fn validate_entry_path(entry: &str) -> Result<PathBuf, String> {
     Ok(parts.iter().collect())
 }
 
+/// Map destination path preflight failures to IPC error codes.
+///
+/// Symbolic-link / reparse hits on the **destination** are `unsafe_destination`
+/// (do not write through reparse). Path-shape / containment failures stay
+/// `invalid_entry`.
+pub fn destination_path_error_code(message: &str) -> &'static str {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("symbolic link") || lower.contains("reparse") {
+        "unsafe_destination"
+    } else {
+        "invalid_entry"
+    }
+}
+
 /// Resolve an archive entry under `root` without re-canonicalizing `root`.
 ///
 /// `root` must already be canonical (caller responsibility). Hot extract paths

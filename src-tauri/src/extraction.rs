@@ -4,7 +4,9 @@ use crate::conflict::unique_renamed_path;
 use crate::format_detect::{detect_format, ArchiveFormat};
 use crate::gzip_format::extract_gzip;
 use crate::models::{CommandError, ConflictDecision, OperationProgress, OperationSummary};
-use crate::security::{is_link_or_reparse_point, safe_destination_path_under_canonical};
+use crate::security::{
+    destination_path_error_code, is_link_or_reparse_point, safe_destination_path_under_canonical,
+};
 use crate::sevenz_format::extract_sevenz;
 use crate::tar_format::{extract_tar, extract_tar_bz2, extract_tar_gz, extract_tar_xz};
 #[cfg(windows)]
@@ -681,7 +683,12 @@ pub fn extract_archive(
             ));
         }
         let entry_destination = safe_destination_path_under_canonical(&destination, &name)
-            .map_err(|message| extraction_error("invalid_entry", format!("{name}: {message}")))?;
+            .map_err(|message| {
+                extraction_error(
+                    destination_path_error_code(&message),
+                    format!("{name}: {message}"),
+                )
+            })?;
         let is_directory = entry.is_dir() || name.ends_with('/') || name.ends_with('\\');
 
         if !planned_paths.insert(entry_destination.clone()) {
