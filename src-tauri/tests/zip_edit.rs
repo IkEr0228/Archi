@@ -23,6 +23,20 @@ fn compact_edit_options() -> EditOptions {
     }
 }
 
+fn fast_edit_options() -> EditOptions {
+    EditOptions {
+        strategy: Some(EditStrategyPref::PreferFast),
+        ..Default::default()
+    }
+}
+
+fn auto_edit_options() -> EditOptions {
+    EditOptions {
+        strategy: Some(EditStrategyPref::Auto),
+        ..Default::default()
+    }
+}
+
 fn temporary_edit_archives(root: &Path) -> Vec<PathBuf> {
     fs::read_dir(root)
         .unwrap()
@@ -83,6 +97,7 @@ fn delete_file_removes_entry_and_keeps_valid_zip() {
         "edit-delete-1",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap();
 
@@ -153,6 +168,7 @@ fn cancel_delete_preserves_original_and_removes_temp() {
     let cancelled = AtomicBool::new(false);
     let progress_calls = Cell::new(0);
 
+    // PreferCompact forces rebuild so multi-member progress can cancel mid-edit.
     let error = delete_entries(
         &zip_path,
         &["a.txt".into(), "b.txt".into()],
@@ -169,6 +185,7 @@ fn cancel_delete_preserves_original_and_removes_temp() {
                 cancelled.store(true, Ordering::Relaxed);
             }
         },
+        &compact_edit_options(),
     )
     .unwrap_err();
 
@@ -213,6 +230,7 @@ fn delete_directory_prefix_removes_children() {
         "edit-delete-dir",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap();
 
@@ -656,6 +674,7 @@ fn delete_rejects_selection_matching_nothing() {
         "edit-delete-noop",
         &AtomicBool::new(false),
         |_| {},
+        &default_edit_options(),
     )
     .unwrap_err();
 
@@ -730,6 +749,287 @@ fn replace_rejects_missing_or_directory_entry() {
     assert_eq!(is_dir.code, "invalid_entry");
 
     assert_eq!(entry_bytes(&zip_path, "folder/a.txt"), b"a");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_prefer_fast_uses_logical_delete() {
+    let root = common::temp_dir("zip-edit-delete-fast");
+    let zip_path = root.join("sample.zip");
+    common::write_zip(
+        &zip_path,
+        &[
+            ("keep.txt", b"keep"),
+            ("drop.txt", b"drop"),
+            ("other.txt", b"other"),
+        ],
+    );
+
+    let mut phases = Vec::new();
+    let summary = delete_entries(
+        &zip_path,
+        &["drop.txt".into()],
+        "edit-delete-fast",
+        &AtomicBool::new(false),
+        |p| {
+            if let Some(phase) = p.phase {
+                phases.push(phase);
+            }
+        },
+        &fast_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("logical_delete"));
+    assert!(phases.iter().any(|p| p == "logical_delete"));
+    assert!(!phases.iter().any(|p| p == "rebuild"));
+    assert!(!entry_names(&zip_path).iter().any(|n| n == "drop.txt"));
+    assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"keep");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_prefer_compact_uses_rebuild() {
+    let root = common::temp_dir("zip-edit-delete-compact");
+    let zip_path = root.join("sample.zip");
+    common::write_zip(
+        &zip_path,
+        &[("keep.txt", b"keep"), ("drop.txt", b"drop")],
+    );
+
+    let mut phases = Vec::new();
+    let summary = delete_entries(
+        &zip_path,
+        &["drop.txt".into()],
+        "edit-delete-compact",
+        &AtomicBool::new(false),
+        |p| {
+            if let Some(phase) = p.phase {
+                phases.push(phase);
+            }
+        },
+        &compact_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("rebuild"));
+    assert!(phases.iter().any(|p| p == "rebuild"));
+    assert!(!phases.iter().any(|p| p == "logical_delete"));
+    assert!(!entry_names(&zip_path).iter().any(|n| n == "drop.txt"));
+    assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"keep");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_auto_small_fraction_uses_logical() {
+    let root = common::temp_dir("zip-edit-delete-auto-small");
+    let zip_path = root.join("sample.zip");
+    // 1 of 8 = 12.5% ≤ 25% → logical
+    let entries: Vec<(&str, &[u8])> = vec![
+        ("a0.txt", b"0"),
+        ("a1.txt", b"1"),
+        ("a2.txt", b"2"),
+        ("a3.txt", b"3"),
+        ("a4.txt", b"4"),
+        ("a5.txt", b"5"),
+        ("a6.txt", b"6"),
+        ("a7.txt", b"7"),
+    ];
+    common::write_zip(&zip_path, &entries);
+
+    let summary = delete_entries(
+        &zip_path,
+        &["a0.txt".into()],
+        "edit-delete-auto-small",
+        &AtomicBool::new(false),
+        |_| {},
+        &auto_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("logical_delete"));
+    assert_eq!(entry_names(&zip_path).len(), 7);
+    assert!(!entry_names(&zip_path).iter().any(|n| n == "a0.txt"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_auto_large_fraction_uses_rebuild() {
+    let root = common::temp_dir("zip-edit-delete-auto-large");
+    let zip_path = root.join("sample.zip");
+    // Auto: logical if fraction ≤ 0.25 OR deleted ≤ 64. A 7-of-8 case hits the
+    // absolute gate (deleted=7≤64); use 70 of 100 so both gates fail → rebuild.
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    for i in 0..100 {
+        entries.push((format!("f{i:03}.txt"), vec![b'x'; 32]));
+    }
+    let entries_ref: Vec<(&str, &[u8])> = entries
+        .iter()
+        .map(|(n, b)| (n.as_str(), b.as_slice()))
+        .collect();
+    common::write_zip(&zip_path, &entries_ref);
+
+    let to_delete: Vec<String> = (0..70).map(|i| format!("f{i:03}.txt")).collect();
+    let mut phases = Vec::new();
+    let summary = delete_entries(
+        &zip_path,
+        &to_delete,
+        "edit-delete-auto-large",
+        &AtomicBool::new(false),
+        |p| {
+            if let Some(phase) = p.phase {
+                phases.push(phase);
+            }
+        },
+        &auto_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("rebuild"));
+    assert!(phases.iter().any(|p| p == "rebuild"));
+    assert_eq!(entry_names(&zip_path).len(), 30);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_logical_leaves_orphan_local_data() {
+    let root = common::temp_dir("zip-edit-delete-orphan");
+    let zip_path = root.join("sample.zip");
+    // Large payload so orphaned local data keeps file size from shrinking much.
+    let big = vec![b'Z'; 64 * 1024];
+    common::write_zip(
+        &zip_path,
+        &[
+            ("keep.txt", b"keep-small"),
+            ("big-drop.bin", big.as_slice()),
+            ("other.txt", b"other"),
+        ],
+    );
+    let size_before = fs::metadata(&zip_path).unwrap().len();
+
+    let summary = delete_entries(
+        &zip_path,
+        &["big-drop.bin".into()],
+        "edit-delete-orphan",
+        &AtomicBool::new(false),
+        |_| {},
+        &fast_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("logical_delete"));
+    assert!(!entry_names(&zip_path).iter().any(|n| n == "big-drop.bin"));
+    assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"keep-small");
+
+    let size_after = fs::metadata(&zip_path).unwrap().len();
+    // Logical delete only rewrites CD/EOCD; local data for big-drop remains.
+    // File must not shrink by nearly the full payload size.
+    assert!(
+        size_after + 8 * 1024 > size_before,
+        "expected orphan local data to keep size near original ({size_before} -> {size_after})"
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_all_entries_logical_yields_empty_zip() {
+    let root = common::temp_dir("zip-edit-delete-all");
+    let zip_path = root.join("sample.zip");
+    common::write_zip(
+        &zip_path,
+        &[("a.txt", b"a"), ("b.txt", b"b"), ("c.txt", b"c")],
+    );
+
+    let summary = delete_entries(
+        &zip_path,
+        &["a.txt".into(), "b.txt".into(), "c.txt".into()],
+        "edit-delete-all",
+        &AtomicBool::new(false),
+        |_| {},
+        &fast_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("logical_delete"));
+    assert_eq!(summary.members_written, 0);
+    assert!(ZipArchive::new(File::open(&zip_path).unwrap()).is_ok());
+    assert!(entry_names(&zip_path).is_empty());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn delete_directory_prefix_logical() {
+    let root = common::temp_dir("zip-edit-delete-dir-logical");
+    let zip_path = root.join("sample.zip");
+    common::write_zip_with_dirs(
+        &zip_path,
+        &["folder/"],
+        &[
+            ("folder/a.txt", b"a"),
+            ("folder/sub/b.txt", b"b"),
+            ("keep.txt", b"k"),
+        ],
+    );
+
+    let summary = delete_entries(
+        &zip_path,
+        &["folder".into()],
+        "edit-delete-dir-logical",
+        &AtomicBool::new(false),
+        |_| {},
+        &fast_edit_options(),
+    )
+    .unwrap();
+
+    assert_eq!(summary.strategy_used.as_deref(), Some("logical_delete"));
+    let names = entry_names(&zip_path);
+    assert!(!names
+        .iter()
+        .any(|n| n == "folder" || n.starts_with("folder/")));
+    assert!(names.iter().any(|n| n == "keep.txt"));
+    assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"k");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cancel_logical_delete_preserves_original() {
+    let root = common::temp_dir("zip-edit-cancel-logical");
+    let zip_path = root.join("sample.zip");
+    common::write_zip(
+        &zip_path,
+        &[
+            ("a.txt", b"aaa"),
+            ("b.txt", b"bbb"),
+            ("c.txt", b"ccc"),
+            ("d.txt", b"ddd"),
+        ],
+    );
+    let original_bytes = fs::read(&zip_path).unwrap();
+    let cancelled = AtomicBool::new(true); // cancel before work starts
+
+    let error = delete_entries(
+        &zip_path,
+        &["a.txt".into()],
+        "edit-cancel-logical",
+        &cancelled,
+        |_| {},
+        &fast_edit_options(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "cancelled");
+    assert_eq!(fs::read(&zip_path).unwrap(), original_bytes);
+    assert!(ZipArchive::new(File::open(&zip_path).unwrap()).is_ok());
+    assert!(temporary_edit_archives(&root).is_empty());
+    assert_eq!(entry_names(&zip_path).len(), 4);
 
     fs::remove_dir_all(root).unwrap();
 }

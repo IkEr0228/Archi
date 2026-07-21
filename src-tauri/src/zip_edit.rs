@@ -22,6 +22,40 @@ fn should_try_append(options: &EditOptions) -> bool {
     !matches!(options.strategy, Some(EditStrategyPref::PreferCompact))
 }
 
+/// Whether to attempt ZIP logical delete (CD rewrite) for this strategy and delete set size.
+///
+/// - PreferCompact: never
+/// - PreferFast: always try
+/// - Auto / None: logical when `deleted/total ≤ 0.25` or `deleted ≤ 64`; else rebuild
+fn should_try_logical_delete(options: &EditOptions, deleted: usize, total: usize) -> bool {
+    match options.strategy {
+        Some(EditStrategyPref::PreferCompact) => false,
+        Some(EditStrategyPref::PreferFast) => true,
+        Some(EditStrategyPref::Auto) | None => {
+            if deleted == 0 || total == 0 {
+                return false;
+            }
+            let fraction = deleted as f64 / total as f64;
+            fraction <= 0.25 || deleted <= 64
+        }
+    }
+}
+
+/// Normalize delete selection the same way as `plan_delete` (for CD filtering).
+fn normalize_delete_selection(paths: &[String]) -> Result<Vec<String>, CommandError> {
+    if paths.is_empty() {
+        return Err(edit_error(
+            "invalid_selection",
+            "No archive paths specified for delete.",
+        ));
+    }
+    let mut selected = Vec::with_capacity(paths.len());
+    for raw in paths {
+        selected.push(normalize_and_validate(raw)?);
+    }
+    Ok(selected)
+}
+
 /// New directory / file members only (no Copy) — what append actually writes.
 fn new_members_only(planned: &[RebuildMember]) -> Vec<RebuildMember> {
     planned
@@ -1313,6 +1347,100 @@ fn apply_add_like_edit(
     rebuild_archive(zip_path, planned, operation_id, cancelled, emit)
 }
 
+/// Logical delete: copy archive to temp, rewrite central directory (orphan local data), publish.
+///
+/// Never mutates `zip_path` until publish. On cancel, cleans up temp and does not rebuild.
+fn logical_delete_archive(
+    zip_path: &Path,
+    selected: &[String],
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    mut emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    if operation_id.is_empty() {
+        return Err(edit_error("invalid_operation", "Operation ID is empty."));
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(cancelled_error());
+    }
+
+    let (temp_path, mut temp_file) = create_temporary_archive_copy(zip_path)?;
+
+    let result = (|| -> Result<EditSummary, CommandError> {
+        emit(OperationProgress {
+            operation_id: operation_id.into(),
+            extracted_files: 0,
+            total_files: 1,
+            current_file: "logical_delete".into(),
+            percentage: 0.0,
+            phase: Some("logical_delete".into()),
+        });
+
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(cancelled_error());
+        }
+
+        let kept = crate::zip_cd::logical_delete_on_file(&mut temp_file, selected, cancelled)?;
+        drop(temp_file);
+
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(cancelled_error());
+        }
+
+        // Validate before replacing the original.
+        {
+            let validate = File::open(&temp_path).map_err(|error| {
+                edit_error(
+                    "write_failed",
+                    format!("Cannot reopen temporary ZIP for validation: {error}"),
+                )
+            })?;
+            ZipArchive::new(validate).map_err(|error| {
+                edit_error(
+                    "write_failed",
+                    format!("Logical delete produced an invalid ZIP: {error}"),
+                )
+            })?;
+        }
+
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(cancelled_error());
+        }
+
+        publish_temp_archive(&temp_path, zip_path).map_err(|error| {
+            edit_error(
+                "finalize_failed",
+                format!("Cannot replace archive with edited copy: {error}"),
+            )
+        })?;
+
+        Ok(EditSummary {
+            operation_id: operation_id.into(),
+            destination: zip_path.to_string_lossy().into_owned(),
+            members_written: kept,
+            strategy_used: Some("logical_delete".into()),
+        })
+    })();
+
+    match result {
+        Ok(summary) => {
+            emit(OperationProgress {
+                operation_id: operation_id.into(),
+                extracted_files: summary.members_written,
+                total_files: summary.members_written.max(1),
+                current_file: "Completed".into(),
+                percentage: 100.0,
+                phase: Some("logical_delete".into()),
+            });
+            Ok(summary)
+        }
+        Err(mut error) => {
+            cleanup_temp(&temp_path, &mut error);
+            Err(error)
+        }
+    }
+}
+
 fn require_zip_file(zip_path: &Path) -> Result<(), CommandError> {
     if !zip_path.is_file() {
         return Err(edit_error(
@@ -1324,16 +1452,39 @@ fn require_zip_file(zip_path: &Path) -> Result<(), CommandError> {
 }
 
 /// Deletes archive entries matching `paths` (exact or directory prefix).
+///
+/// Strategy:
+/// - PreferCompact: full rebuild
+/// - PreferFast: try logical delete (CD rewrite); non-cancel failure → rebuild
+/// - Auto / default: logical when `deleted/total ≤ 0.25` or `deleted ≤ 64`; else rebuild
+///
+/// Cancel during logical delete cleans up temp and does **not** fall back to rebuild.
 pub fn delete_entries(
     zip_path: &Path,
     paths: &[String],
     operation_id: &str,
     cancelled: &AtomicBool,
-    emit: impl FnMut(OperationProgress),
+    mut emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_zip_file(zip_path)?;
     let (_, members) = open_source_members(zip_path)?;
     let planned = plan_delete(&members, paths)?;
+    let total = members.len();
+    let kept = planned.len();
+    let deleted = total.saturating_sub(kept);
+
+    if should_try_logical_delete(options, deleted, total) {
+        let selected = normalize_delete_selection(paths)?;
+        match logical_delete_archive(zip_path, &selected, operation_id, cancelled, &mut emit) {
+            Ok(summary) => return Ok(summary),
+            Err(error) if error.code == "cancelled" => return Err(error),
+            Err(_) => {
+                // PreferFast / Auto: fall through to full rebuild on non-cancel failure.
+            }
+        }
+    }
+
     rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)
 }
 

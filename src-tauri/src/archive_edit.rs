@@ -332,9 +332,14 @@ pub fn delete_entries(
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
-        ArchiveFormat::Zip => {
-            zip_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit)
-        }
+        ArchiveFormat::Zip => zip_edit::delete_entries(
+            archive_path,
+            paths,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
         ArchiveFormat::SevenZ => sevenz_edit::delete_entries(
             archive_path,
             paths,
