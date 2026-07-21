@@ -16,3 +16,10 @@ Added APIs for byte-copy of already-compressed non-solid pack streams:
 Do not upgrade this vendor tree casually; re-apply the patch when bumping.
 
 Archi (MIT) depends on this crate via path/`[patch.crates-io]`. Combined work must respect Apache-2.0 attribution for this dependency.
+
+## Upstream status
+
+PR open: https://github.com/hasenbanck/sevenz-rust2/pull/123  
+(`feat: push_packed_entry for non-solid pack-stream copy`)
+
+After that lands on crates.io, switch `src-tauri/Cargo.toml` off this vendor path.

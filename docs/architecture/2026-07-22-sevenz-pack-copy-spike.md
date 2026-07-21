@@ -4,6 +4,15 @@
 **Branch:** `feat/incremental-edit`  
 **Scope:** Research spike (SA-C1) **and** product wiring into `sevenz_edit::apply_planned` (SA-C2).
 
+## Upstream PR
+
+Submitted to sevenz-rust2: **https://github.com/hasenbanck/sevenz-rust2/pull/123**
+
+Branch on fork: `IkEr0228/sevenz-rust2` → `feat/push-packed-entry`  
+Local clone used for the PR: `E:\Projects\archi\sevenz-rust2-pr` (outside Archi repo).
+
+When merged and released on crates.io, Archi can drop `vendor/sevenz-rust2` and depend on the published version (re-check API surface).
+
 ## Recommendation
 
 # **GO** (product path wired)
