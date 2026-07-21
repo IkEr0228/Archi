@@ -59,11 +59,7 @@ fn create_work_dir(archive_path: &Path) -> Result<PathBuf, CommandError> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = parent.join(format!(
-        ".archi-edit-work-{}-{}",
-        std::process::id(),
-        stamp
-    ));
+    let dir = parent.join(format!(".archi-edit-work-{}-{}", std::process::id(), stamp));
     fs::create_dir_all(&dir).map_err(|e| {
         edit_error(
             "temp_create_failed",
@@ -106,17 +102,16 @@ fn recreate_from_work(
             &options,
             &mut emit,
         )?,
-        CreateFormat::Tar
-        | CreateFormat::TarGz
-        | CreateFormat::TarBz2
-        | CreateFormat::TarXz => create_tar_archive(
-            &sources,
-            archive_path,
-            operation_id,
-            cancelled,
-            &options,
-            &mut emit,
-        )?,
+        CreateFormat::Tar | CreateFormat::TarGz | CreateFormat::TarBz2 | CreateFormat::TarXz => {
+            create_tar_archive(
+                &sources,
+                archive_path,
+                operation_id,
+                cancelled,
+                &options,
+                &mut emit,
+            )?
+        }
         CreateFormat::SevenZ => create_sevenz_archive(
             &sources,
             archive_path,
@@ -190,9 +185,8 @@ fn apply_rename(work: &Path, from: &str, to: &str) -> Result<(), CommandError> {
     let src = work.join(from_rel.replace('/', std::path::MAIN_SEPARATOR_STR));
     let dst = work.join(to_rel.replace('/', std::path::MAIN_SEPARATOR_STR));
     if let Some(parent) = dst.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            edit_error("write_failed", format!("Cannot create rename parent: {e}"))
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| edit_error("write_failed", format!("Cannot create rename parent: {e}")))?;
     }
     fs::rename(&src, &dst)
         .map_err(|e| edit_error("write_failed", format!("Cannot rename entry: {e}")))?;
@@ -332,33 +326,18 @@ pub fn delete_entries(
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
-        ArchiveFormat::Zip => zip_edit::delete_entries(
-            archive_path,
-            paths,
-            operation_id,
-            cancelled,
-            emit,
-            options,
-        ),
-        ArchiveFormat::SevenZ => sevenz_edit::delete_entries(
-            archive_path,
-            paths,
-            operation_id,
-            cancelled,
-            emit,
-            options,
-        ),
+        ArchiveFormat::Zip => {
+            zip_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, options)
+        }
+        ArchiveFormat::SevenZ => {
+            sevenz_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, options)
+        }
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz => tar_edit::delete_entries(
-            archive_path,
-            paths,
-            operation_id,
-            cancelled,
-            emit,
-            options,
-        ),
+        | ArchiveFormat::TarXz => {
+            tar_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, options)
+        }
         other => Err(edit_error(
             "unsupported_operation",
             format!("Edit is not supported for {} archives.", other.as_str()),
@@ -376,9 +355,14 @@ pub fn rename_entry(
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
-        ArchiveFormat::Zip => {
-            zip_edit::rename_entry(archive_path, from_path, to_path, operation_id, cancelled, emit)
-        }
+        ArchiveFormat::Zip => zip_edit::rename_entry(
+            archive_path,
+            from_path,
+            to_path,
+            operation_id,
+            cancelled,
+            emit,
+        ),
         ArchiveFormat::SevenZ => sevenz_edit::rename_entry(
             archive_path,
             from_path,
@@ -555,23 +539,15 @@ pub fn compact_archive(
         ArchiveFormat::Zip => {
             zip_edit::compact_archive(archive_path, operation_id, cancelled, emit)
         }
-        ArchiveFormat::SevenZ => sevenz_edit::compact_archive(
-            archive_path,
-            operation_id,
-            cancelled,
-            emit,
-            options,
-        ),
+        ArchiveFormat::SevenZ => {
+            sevenz_edit::compact_archive(archive_path, operation_id, cancelled, emit, options)
+        }
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
-        | ArchiveFormat::TarXz => tar_edit::compact_archive(
-            archive_path,
-            operation_id,
-            cancelled,
-            emit,
-            options,
-        ),
+        | ArchiveFormat::TarXz => {
+            tar_edit::compact_archive(archive_path, operation_id, cancelled, emit, options)
+        }
         other => Err(edit_error(
             "unsupported_operation",
             format!("Compact is not supported for {} archives.", other.as_str()),

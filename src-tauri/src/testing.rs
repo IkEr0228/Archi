@@ -20,10 +20,7 @@ fn test_error(code: &str, message: impl Into<String>) -> CommandError {
     CommandError::new(code, message)
 }
 
-fn drain_reader(
-    reader: &mut impl Read,
-    cancelled: &AtomicBool,
-) -> Result<(), String> {
+fn drain_reader(reader: &mut impl Read, cancelled: &AtomicBool) -> Result<(), String> {
     let mut buffer = [0_u8; BUFFER_SIZE];
     loop {
         if cancelled.load(Ordering::Relaxed) {
@@ -58,7 +55,9 @@ pub fn test_archive(
         ArchiveFormat::TarBz2 => test_tar_bz2(archive_path, operation_id, cancelled, emit),
         ArchiveFormat::TarXz => test_tar_xz(archive_path, operation_id, cancelled, emit),
         ArchiveFormat::Gzip => test_single_stream_gzip(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::Bzip2 => test_single_stream_bzip2(archive_path, operation_id, cancelled, emit),
+        ArchiveFormat::Bzip2 => {
+            test_single_stream_bzip2(archive_path, operation_id, cancelled, emit)
+        }
         ArchiveFormat::Xz => test_single_stream_xz(archive_path, operation_id, cancelled, emit),
         ArchiveFormat::SevenZ => test_sevenz(archive_path, operation_id, cancelled, emit),
     }
@@ -268,7 +267,12 @@ fn test_tar_gz(
 ) -> Result<TestArchiveSummary, CommandError> {
     let file = File::open(path)
         .map_err(|e| test_error("invalid_archive", format!("Cannot open tar.gz: {e}")))?;
-    test_tar_reader(Archive::new(GzDecoder::new(file)), operation_id, cancelled, emit)
+    test_tar_reader(
+        Archive::new(GzDecoder::new(file)),
+        operation_id,
+        cancelled,
+        emit,
+    )
 }
 
 fn test_tar_bz2(
@@ -279,7 +283,12 @@ fn test_tar_bz2(
 ) -> Result<TestArchiveSummary, CommandError> {
     let file = File::open(path)
         .map_err(|e| test_error("invalid_archive", format!("Cannot open tar.bz2: {e}")))?;
-    test_tar_reader(Archive::new(BzDecoder::new(file)), operation_id, cancelled, emit)
+    test_tar_reader(
+        Archive::new(BzDecoder::new(file)),
+        operation_id,
+        cancelled,
+        emit,
+    )
 }
 
 fn test_tar_xz(
@@ -290,7 +299,12 @@ fn test_tar_xz(
 ) -> Result<TestArchiveSummary, CommandError> {
     let file = File::open(path)
         .map_err(|e| test_error("invalid_archive", format!("Cannot open tar.xz: {e}")))?;
-    test_tar_reader(Archive::new(XzDecoder::new(file)), operation_id, cancelled, emit)
+    test_tar_reader(
+        Archive::new(XzDecoder::new(file)),
+        operation_id,
+        cancelled,
+        emit,
+    )
 }
 
 fn test_single_named(
@@ -380,12 +394,8 @@ fn test_sevenz(
 ) -> Result<TestArchiveSummary, CommandError> {
     use sevenz_rust2::{ArchiveReader, Password};
 
-    let mut reader = ArchiveReader::open(path, Password::empty()).map_err(|e| {
-        test_error(
-            "invalid_archive",
-            format!("Cannot read 7z structure: {e}"),
-        )
-    })?;
+    let mut reader = ArchiveReader::open(path, Password::empty())
+        .map_err(|e| test_error("invalid_archive", format!("Cannot read 7z structure: {e}")))?;
 
     let total = reader
         .archive()

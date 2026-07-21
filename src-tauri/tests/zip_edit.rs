@@ -561,9 +561,7 @@ fn create_folder_prefer_compact_uses_rebuild() {
     assert_eq!(summary.strategy_used.as_deref(), Some("rebuild"));
     assert!(phases.iter().any(|p| p == "rebuild"));
     assert!(!phases.iter().any(|p| p == "append"));
-    assert!(entry_names(&zip_path)
-        .iter()
-        .any(|n| n == "compact-folder"));
+    assert!(entry_names(&zip_path).iter().any(|n| n == "compact-folder"));
     assert_eq!(entry_bytes(&zip_path, "keep.txt"), b"keep");
 
     fs::remove_dir_all(root).unwrap();
@@ -794,10 +792,7 @@ fn delete_prefer_fast_uses_logical_delete() {
 fn delete_prefer_compact_uses_rebuild() {
     let root = common::temp_dir("zip-edit-delete-compact");
     let zip_path = root.join("sample.zip");
-    common::write_zip(
-        &zip_path,
-        &[("keep.txt", b"keep"), ("drop.txt", b"drop")],
-    );
+    common::write_zip(&zip_path, &[("keep.txt", b"keep"), ("drop.txt", b"drop")]);
 
     let mut phases = Vec::new();
     let summary = delete_entries(

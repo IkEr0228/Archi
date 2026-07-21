@@ -14,9 +14,7 @@ use archi_backend_lib::sevenz_pack_copy::{
     pack_copy_delete_to_temp_only,
 };
 use sevenz_rust2::encoder_options::Lzma2Options;
-use sevenz_rust2::{
-    ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password, SourceReader,
-};
+use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password, SourceReader};
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -241,10 +239,7 @@ fn s6_eligibility_rejects_solid() {
     let mut writer = ArchiveWriter::create(&out).unwrap();
     writer.set_content_methods(vec![Lzma2Options::from_level(3).into()]);
     writer.set_encrypt_header(false);
-    let entries = vec![
-        SzEntry::new_file("x.txt"),
-        SzEntry::new_file("y.txt"),
-    ];
+    let entries = vec![SzEntry::new_file("x.txt"), SzEntry::new_file("y.txt")];
     let readers = vec![
         SourceReader::new(Cursor::new(b"solid-a".to_vec())),
         SourceReader::new(Cursor::new(b"solid-b".to_vec())),

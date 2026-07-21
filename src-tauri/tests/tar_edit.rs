@@ -1,9 +1,7 @@
 mod common;
 
 use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::models::{
-    CompressionPreset, CreateFormat, CreateOptions, EditOptions,
-};
+use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions, EditOptions};
 use archi_backend_lib::tar_create::create_tar_archive;
 use archi_backend_lib::tar_edit::{
     add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
@@ -419,9 +417,7 @@ fn tgz_move_entries_relocates_leaf() {
     .unwrap();
 
     assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
-    assert!(entry_names(&archive)
-        .iter()
-        .any(|n| n == "nested/keep.txt"));
+    assert!(entry_names(&archive).iter().any(|n| n == "nested/keep.txt"));
     assert_eq!(
         entry_bytes_via_extract(&archive, "nested/keep.txt"),
         b"keep-data"

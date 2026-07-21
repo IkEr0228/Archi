@@ -5,6 +5,10 @@ use crate::file_assoc::{
     FileAssociationStatus,
 };
 
+use crate::archive_edit::{
+    add_paths, compact_archive, create_folder, delete_entries, move_entries, rename_entry,
+    replace_file,
+};
 use crate::models::{
     ArchiveInfo, CommandError, ConflictDecision, CreateFormat, CreateOptions, EditOptions,
     EditSummary, ExtractConflictEvent, OperationSummary, TestArchiveSummary,
@@ -13,10 +17,6 @@ use crate::operations::OperationRegistry;
 use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
 use crate::tar_create::create_tar_archive;
-use crate::archive_edit::{
-    add_paths, compact_archive, create_folder, delete_entries, move_entries, rename_entry,
-    replace_file,
-};
 use crate::testing::test_archive;
 use crate::zipper::create_zip_archive;
 use std::fs;

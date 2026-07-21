@@ -9,9 +9,7 @@ use crate::create_common::{
     progress_percentage, publish_temp_archive, ProgressGate,
 };
 use crate::extraction::normalize_entry_name;
-use crate::models::{
-    CommandError, CompressionPreset, EditSummary, OperationProgress,
-};
+use crate::models::{CommandError, CompressionPreset, EditSummary, OperationProgress};
 use crate::security::validate_entry_path;
 use sevenz_rust2::encoder_options::Lzma2Options;
 use sevenz_rust2::{
@@ -180,8 +178,13 @@ pub enum PackStreamMember {
         out_path: String,
         is_dir: bool,
     },
-    NewDirectory { path: String },
-    NewFile { path: String, source: PathBuf },
+    NewDirectory {
+        path: String,
+    },
+    NewFile {
+        path: String,
+        source: PathBuf,
+    },
 }
 
 impl PackStreamMember {
@@ -276,9 +279,10 @@ fn build_pack_slots(archive: &Archive) -> Result<Vec<PackSlot>, CommandError> {
                 format!("Streamed file {file_index} has no block mapping"),
             )
         })?;
-        let block = archive.blocks.get(block_index).ok_or_else(|| {
-            edit_error("invalid_archive", format!("Missing block {block_index}"))
-        })?;
+        let block = archive
+            .blocks
+            .get(block_index)
+            .ok_or_else(|| edit_error("invalid_archive", format!("Missing block {block_index}")))?;
         let pack_stream_index = *block_first_pack.get(block_index).ok_or_else(|| {
             edit_error(
                 "invalid_archive",
@@ -505,8 +509,7 @@ pub fn pack_stream_rebuild(
                                     None::<File>,
                                 )
                                 .map_err(map_sz_error)?;
-                            stats.directories_written =
-                                stats.directories_written.saturating_add(1);
+                            stats.directories_written = stats.directories_written.saturating_add(1);
                         } else {
                             // Non-stream empty file: re-emit as empty new file.
                             writer
@@ -585,10 +588,7 @@ pub fn pack_stream_rebuild(
             )
         })?;
         finished.sync_all().map_err(|error| {
-            edit_error(
-                "write_failed",
-                format!("Cannot sync temporary 7z: {error}"),
-            )
+            edit_error("write_failed", format!("Cannot sync temporary 7z: {error}"))
         })?;
         drop(finished);
         drop(source);
@@ -753,8 +753,7 @@ pub fn pack_copy_delete_to_temp_only(
         )
     })?;
     let slots = build_pack_slots(&archive)?;
-    let slot_by_file: HashMap<usize, &PackSlot> =
-        slots.iter().map(|s| (s.file_index, s)).collect();
+    let slot_by_file: HashMap<usize, &PackSlot> = slots.iter().map(|s| (s.file_index, s)).collect();
 
     let mut keep: Vec<usize> = Vec::new();
     let mut matched = false;

@@ -165,11 +165,7 @@ fn find_eocd(file: &mut File) -> Result<Eocd, CommandError> {
     // Scan from the end for EOCD signature; require comment length to land at EOF.
     let mut i = search_len.saturating_sub(EOCD_MIN_SIZE as usize);
     loop {
-        if tail[i] == 0x50
-            && tail[i + 1] == 0x4b
-            && tail[i + 2] == 0x05
-            && tail[i + 3] == 0x06
-        {
+        if tail[i] == 0x50 && tail[i + 1] == 0x4b && tail[i + 2] == 0x05 && tail[i + 3] == 0x06 {
             let comment_len = read_u16_le(&tail[i + 20..i + 22]) as usize;
             let record_end = i + EOCD_MIN_SIZE as usize + comment_len;
             if record_end == search_len {
@@ -313,10 +309,7 @@ fn directory_info(file: &mut File, eocd: &Eocd) -> Result<DirectoryInfo, Command
                 .central_directory_offset
                 .checked_add(archive_offset)
                 .ok_or_else(|| {
-                    cd_error(
-                        "invalid_archive",
-                        "Invalid Zip64 central directory offset.",
-                    )
+                    cd_error("invalid_archive", "Invalid Zip64 central directory offset.")
                 })?;
             Ok(DirectoryInfo {
                 directory_start,
@@ -356,12 +349,13 @@ fn filter_central_directory(
     selected: &[String],
     cancelled: &AtomicBool,
 ) -> Result<(Vec<u8>, u64, u64), CommandError> {
-    file.seek(SeekFrom::Start(directory_start)).map_err(|error| {
-        cd_error(
-            "invalid_archive",
-            format!("Cannot seek to central directory: {error}"),
-        )
-    })?;
+    file.seek(SeekFrom::Start(directory_start))
+        .map_err(|error| {
+            cd_error(
+                "invalid_archive",
+                format!("Cannot seek to central directory: {error}"),
+            )
+        })?;
 
     let mut kept = Vec::new();
     let mut kept_count = 0_u64;
@@ -503,9 +497,9 @@ pub fn logical_delete_on_file(
             central_directory_size: cd_size,
             central_directory_offset: cd_offset_relative,
         };
-        let zip64_eocd_offset = cd_offset_relative.checked_add(cd_size).ok_or_else(|| {
-            cd_error("write_failed", "ZIP offset overflow writing Zip64 EOCD.")
-        })?;
+        let zip64_eocd_offset = cd_offset_relative
+            .checked_add(cd_size)
+            .ok_or_else(|| cd_error("write_failed", "ZIP offset overflow writing Zip64 EOCD."))?;
         trailer.extend_from_slice(&zip64.encode());
         trailer.extend_from_slice(&encode_zip64_locator(zip64_eocd_offset));
     }

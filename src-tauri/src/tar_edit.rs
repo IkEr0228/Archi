@@ -8,9 +8,7 @@ use crate::create_common::{
 };
 use crate::extraction::normalize_entry_name;
 use crate::format_detect::{detect_format, ArchiveFormat};
-use crate::models::{
-    CommandError, CompressionPreset, EditOptions, EditSummary, OperationProgress,
-};
+use crate::models::{CommandError, CompressionPreset, EditOptions, EditSummary, OperationProgress};
 use crate::security::{is_link_or_reparse_point, validate_entry_path};
 use bzip2::read::BzDecoder;
 use bzip2::write::BzEncoder;
@@ -37,8 +35,13 @@ enum RebuildMember {
         out_path: String,
         is_dir: bool,
     },
-    NewDirectory { path: String },
-    NewFile { path: String, source: PathBuf },
+    NewDirectory {
+        path: String,
+    },
+    NewFile {
+        path: String,
+        source: PathBuf,
+    },
 }
 
 impl RebuildMember {
@@ -210,12 +213,8 @@ fn collect_members_from_archive<R: Read>(
 }
 
 fn open_source_members(path: &Path, fmt: ArchiveFormat) -> Result<Vec<SourceMember>, CommandError> {
-    let file = File::open(path).map_err(|error| {
-        edit_error(
-            "invalid_archive",
-            format!("Cannot open archive: {error}"),
-        )
-    })?;
+    let file = File::open(path)
+        .map_err(|error| edit_error("invalid_archive", format!("Cannot open archive: {error}")))?;
     match fmt {
         ArchiveFormat::Tar => {
             let mut archive = Archive::new(file);
@@ -1181,16 +1180,15 @@ fn finish_plain_tar(builder: Builder<File>) -> Result<File, CommandError> {
             format!("Cannot finalize tar archive: {error}"),
         )
     })?;
-    file.sync_all().map_err(|error| {
-        edit_error("write_failed", format!("Cannot sync tar archive: {error}"))
-    })?;
+    file.sync_all()
+        .map_err(|error| edit_error("write_failed", format!("Cannot sync tar archive: {error}")))?;
     Ok(file)
 }
 
 fn finish_gz_tar(builder: Builder<GzEncoder<File>>) -> Result<File, CommandError> {
-    let encoder = builder.into_inner().map_err(|error| {
-        edit_error("write_failed", format!("Cannot finalize tar.gz: {error}"))
-    })?;
+    let encoder = builder
+        .into_inner()
+        .map_err(|error| edit_error("write_failed", format!("Cannot finalize tar.gz: {error}")))?;
     let file = encoder.finish().map_err(|error| {
         edit_error(
             "write_failed",
@@ -1203,9 +1201,9 @@ fn finish_gz_tar(builder: Builder<GzEncoder<File>>) -> Result<File, CommandError
 }
 
 fn finish_bz_tar(builder: Builder<BzEncoder<File>>) -> Result<File, CommandError> {
-    let encoder = builder.into_inner().map_err(|error| {
-        edit_error("write_failed", format!("Cannot finalize tar.bz2: {error}"))
-    })?;
+    let encoder = builder
+        .into_inner()
+        .map_err(|error| edit_error("write_failed", format!("Cannot finalize tar.bz2: {error}")))?;
     let file = encoder.finish().map_err(|error| {
         edit_error(
             "write_failed",
@@ -1218,12 +1216,12 @@ fn finish_bz_tar(builder: Builder<BzEncoder<File>>) -> Result<File, CommandError
 }
 
 fn finish_xz_tar(builder: Builder<XzEncoder<File>>) -> Result<File, CommandError> {
-    let encoder = builder.into_inner().map_err(|error| {
-        edit_error("write_failed", format!("Cannot finalize tar.xz: {error}"))
-    })?;
-    let file = encoder.finish().map_err(|error| {
-        edit_error("write_failed", format!("Cannot finish xz stream: {error}"))
-    })?;
+    let encoder = builder
+        .into_inner()
+        .map_err(|error| edit_error("write_failed", format!("Cannot finalize tar.xz: {error}")))?;
+    let file = encoder
+        .finish()
+        .map_err(|error| edit_error("write_failed", format!("Cannot finish xz stream: {error}")))?;
     file.sync_all()
         .map_err(|error| edit_error("write_failed", format!("Cannot sync tar.xz: {error}")))?;
     Ok(file)
@@ -1256,9 +1254,9 @@ fn stream_rebuild(
                 out_path,
                 is_dir,
             } => {
-                let src = members
-                    .get(*index)
-                    .ok_or_else(|| edit_error("invalid_archive", "Planned copy index out of range."))?;
+                let src = members.get(*index).ok_or_else(|| {
+                    edit_error("invalid_archive", "Planned copy index out of range.")
+                })?;
                 keep_map.insert(src.path.clone(), (out_path.clone(), *is_dir));
             }
             RebuildMember::NewDirectory { .. } | RebuildMember::NewFile { .. } => {

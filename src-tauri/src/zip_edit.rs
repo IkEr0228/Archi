@@ -1,7 +1,5 @@
 use crate::extraction::normalize_entry_name;
-use crate::models::{
-    CommandError, EditOptions, EditStrategyPref, OperationProgress,
-};
+use crate::models::{CommandError, EditOptions, EditStrategyPref, OperationProgress};
 
 pub use crate::models::EditSummary;
 use crate::security::{is_link_or_reparse_point, validate_entry_path};
@@ -502,9 +500,9 @@ fn plan_move(
             ));
         }
         // Source must exist.
-        let exists = members.iter().any(|m| {
-            m.path == *from || m.path.starts_with(&(from.clone() + "/"))
-        });
+        let exists = members
+            .iter()
+            .any(|m| m.path == *from || m.path.starts_with(&(from.clone() + "/")));
         if !exists {
             return Err(CommandError {
                 code: "not_found".into(),

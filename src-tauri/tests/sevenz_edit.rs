@@ -1,9 +1,7 @@
 mod common;
 
 use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::models::{
-    CompressionPreset, CreateFormat, CreateOptions, EditOptions,
-};
+use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions, EditOptions};
 use archi_backend_lib::sevenz_edit::{
     add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
 };

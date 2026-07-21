@@ -36,8 +36,13 @@ enum RebuildMember {
         out_path: String,
         is_dir: bool,
     },
-    NewDirectory { path: String },
-    NewFile { path: String, source: PathBuf },
+    NewDirectory {
+        path: String,
+    },
+    NewFile {
+        path: String,
+        source: PathBuf,
+    },
 }
 
 impl RebuildMember {
@@ -893,9 +898,9 @@ fn stream_rebuild(
                 out_path,
                 is_dir,
             } => {
-                let src = members
-                    .get(*index)
-                    .ok_or_else(|| edit_error("invalid_archive", "Planned copy index out of range."))?;
+                let src = members.get(*index).ok_or_else(|| {
+                    edit_error("invalid_archive", "Planned copy index out of range.")
+                })?;
                 keep_map.insert(src.path.clone(), (out_path.clone(), *is_dir));
             }
             RebuildMember::NewDirectory { .. } | RebuildMember::NewFile { .. } => {
@@ -916,7 +921,8 @@ fn stream_rebuild(
         let mut progress_gate = ProgressGate::new();
         let mut kept_written: HashSet<String> = HashSet::new();
 
-        let mut reader = ArchiveReader::open(archive_path, Password::empty()).map_err(map_sz_error)?;
+        let mut reader =
+            ArchiveReader::open(archive_path, Password::empty()).map_err(map_sz_error)?;
 
         let for_each_result = reader.for_each_entries(|entry, data| {
             if cancelled.load(Ordering::Relaxed) {
@@ -1023,10 +1029,7 @@ fn stream_rebuild(
             )
         })?;
         finished.sync_all().map_err(|error| {
-            edit_error(
-                "write_failed",
-                format!("Cannot sync temporary 7z: {error}"),
-            )
+            edit_error("write_failed", format!("Cannot sync temporary 7z: {error}"))
         })?;
         drop(finished);
         drop(reader);
@@ -1079,11 +1082,7 @@ fn create_work_dir(archive_path: &Path) -> Result<PathBuf, CommandError> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = parent.join(format!(
-        ".archi-edit-work-{}-{}",
-        std::process::id(),
-        stamp
-    ));
+    let dir = parent.join(format!(".archi-edit-work-{}-{}", std::process::id(), stamp));
     fs::create_dir_all(&dir).map_err(|e| {
         edit_error(
             "temp_create_failed",
@@ -1136,9 +1135,8 @@ fn apply_rename(work: &Path, from: &str, to: &str) -> Result<(), CommandError> {
     let src = work.join(from_rel.replace('/', std::path::MAIN_SEPARATOR_STR));
     let dst = work.join(to_rel.replace('/', std::path::MAIN_SEPARATOR_STR));
     if let Some(parent) = dst.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            edit_error("write_failed", format!("Cannot create rename parent: {e}"))
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| edit_error("write_failed", format!("Cannot create rename parent: {e}")))?;
     }
     fs::rename(&src, &dst)
         .map_err(|e| edit_error("write_failed", format!("Cannot rename entry: {e}")))?;
