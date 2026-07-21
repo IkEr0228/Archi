@@ -5,7 +5,6 @@ use archi_backend_lib::cli_open::resolve_cli_archive_path;
 use archi_backend_lib::commands::{self, StartupCliPath};
 use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
-use std::time::Duration;
 use tauri::{Emitter, Manager};
 
 #[derive(Clone, serde::Serialize)]
@@ -39,40 +38,11 @@ fn main() {
                 *guard = path;
             }
 
+            // Opaque window + no acrylic: fastest create/show path on Windows.
             if let Some(window) = app.get_webview_window("main") {
-                // Paint ASAP — do not wait on acrylic / vibrancy.
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
-
-                // Defer expensive DWM acrylic so first frame is not blocked.
-                #[cfg(target_os = "windows")]
-                {
-                    let handle = app.handle().clone();
-                    std::thread::spawn(move || {
-                        // One frame-ish delay: window can appear first.
-                        std::thread::sleep(Duration::from_millis(32));
-                        let handle2 = handle.clone();
-                        let _ = handle.run_on_main_thread(move || {
-                            if let Some(win) = handle2.get_webview_window("main") {
-                                let _ = window_vibrancy::apply_acrylic(
-                                    &win,
-                                    Some((245, 235, 235, 100)),
-                                );
-                            }
-                        });
-                    });
-                }
-
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = window_vibrancy::apply_vibrancy(
-                        &window,
-                        window_vibrancy::NSVisualEffectMaterial::UnderWindowBackground,
-                        None,
-                        None,
-                    );
-                }
             }
             Ok(())
         })

@@ -1,12 +1,10 @@
-/* app.css - Global styles matching Niti */
-
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap');
+/* app.css - Dark pastel desktop UI (opaque window for fast cold start) */
 
 :root {
   color-scheme: dark;
-  /* Dark Pastel Theme (high contrast on dark acrylic) */
-  --bg-transparency: rgba(20, 16, 20, 0.45);
-  --bg-sidebar: rgba(12, 10, 14, 0.55);
+  /* Solid surfaces — no acrylic/blur dependency (instant window create). */
+  --bg-transparency: #141014;
+  --bg-sidebar: #0e0c10;
   --bg-active: rgba(255, 255, 255, 0.15);
   --bg-hover: rgba(255, 255, 255, 0.06);
   --bg-surface: #1e1e24;
@@ -15,28 +13,27 @@
   --text-main: #fcf6f6;
   --text-muted: #c8b9b9;
 
-  /* Vibrant pastels for dark backgrounds */
   --pastel-rose: #ffbebe;
   --pastel-peach: #ffd5ae;
   --pastel-mint: #9be9df;
   --pastel-lavender: #b9cce6;
   --pastel-purple: #d7c0ff;
 
-  --font-sans: 'Outfit', sans-serif;
-  --font-mono: 'Fira Code', 'Courier New', Courier, monospace;
+  /* Local system fonts only — never block on fonts.googleapis.com */
+  --font-sans: system-ui, "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace;
   --dot-inactive: rgba(255, 255, 255, 0.06);
 }
 
-/* Base styles - transparent to allow OS Acrylic blur to shine through */
 html, body {
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent !important;
+  background: #0a0a0c !important;
   color: var(--text-main);
-  font-family: var(--font-mono); /* Niti ecosystem primarily uses monospace layout */
+  font-family: var(--font-mono);
   user-select: none;
 }
 
@@ -47,11 +44,9 @@ html, body {
   height: 100vh;
   width: 100vw;
   background: var(--bg-transparency);
-  backdrop-filter: blur(10px); /* fallback for acrylic */
-  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
   box-sizing: border-box;
   overflow: hidden;
-  border-radius: 12px;
 }
 
 .monospace {
@@ -590,7 +585,7 @@ html, body {
   overflow-y: auto;
   border: 1.5px solid var(--border-color);
   border-radius: 4px;
-  background: rgba(10, 10, 12, 0.45); /* dense dark panel styling */
+  background: #121016;
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
   outline: none;
 }
