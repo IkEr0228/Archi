@@ -1,6 +1,6 @@
 {
   "name": "archi",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "Windows archive manager — safe extract, multi-format open/create, ZIP edit (Tauri + Svelte)",
   "license": "MIT",

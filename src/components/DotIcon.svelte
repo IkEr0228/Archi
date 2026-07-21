@@ -181,16 +181,19 @@
   class="dot-icon"
   aria-label={fileType}
 >
+  <!-- Only paint lit cells (was 64 circles/row → ~20 rects). Cheaper DOM/GPU. -->
   {#each matrix as row, rowIndex}
     {#each row as cell, colIndex}
-      <circle
-        cx={colIndex * 10 + 5}
-        cy={rowIndex * 10 + 5}
-        r="3.5"
-        fill={cell === 1 ? activeColor : (cell === 2 ? ledColor : "var(--dot-inactive, rgba(0, 0, 0, 0.06))")}
-        class="dot"
-        class:active={cell === 1 || cell === 2}
-      />
+      {#if cell === 1 || cell === 2}
+        <rect
+          x={colIndex * 10 + 1.5}
+          y={rowIndex * 10 + 1.5}
+          width="7"
+          height="7"
+          rx="2"
+          fill={cell === 2 ? ledColor : activeColor}
+        />
+      {/if}
     {/each}
   {/each}
 </svg>
@@ -199,19 +202,5 @@
   .dot-icon {
     display: inline-block;
     flex-shrink: 0;
-    transition: transform 0.2s ease;
-  }
-  
-  .dot {
-    transition: fill 0.2s ease, r 0.2s ease;
-  }
-
-  .dot.active {
-    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.1));
-  }
-
-  :global(tr:hover) .dot.active {
-    r: 4.2px;
-    filter: brightness(0.95) drop-shadow(0 0 4px rgba(0, 0, 0, 0.15));
   }
 </style>

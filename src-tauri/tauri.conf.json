@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "archi",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "identifier": "com.archi.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,6 +10,7 @@
     "frontendDist": "../build"
   },
   "app": {
+    "withGlobalTauri": false,
     "windows": [
       {
         "label": "main",
@@ -17,7 +18,11 @@
         "width": 800,
         "height": 600,
         "decorations": false,
-        "transparent": true
+        "transparent": true,
+        "visible": true,
+        "focus": true,
+        "backgroundColor": "#0a0a0c",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,CalculateNativeWinOcclusion --disable-background-networking --disable-component-update --disable-default-apps --disable-domain-reliability --disable-sync --no-first-run --disable-renderer-backgrounding --disable-background-timer-throttling"
       }
     ],
     "security": {

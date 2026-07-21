@@ -1137,9 +1137,9 @@
     outputPath={createOutputPath}
     busy={!!activeOperation}
     onFormat={handleCreateFormatChange}
-    onCompression={(v) => (createCompression = v)}
-    onIncludeRoot={(v) => (createIncludeRoot = v)}
-    onOverwrite={(v) => (createOverwrite = v)}
+    onCompression={(v: 'store' | 'fast' | 'normal' | 'max') => (createCompression = v)}
+    onIncludeRoot={(v: boolean) => (createIncludeRoot = v)}
+    onOverwrite={(v: boolean) => (createOverwrite = v)}
     onBrowseOutput={browseCreateOutput}
     onCreate={confirmCreateArchive}
     onCancel={() => (showCreateModal = false)}
