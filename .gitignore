@@ -48,3 +48,8 @@ ehthumbs.db
 # Accidental local binaries in repo root
 /*.exe
 /*.msi
+
+# Local release packaging
+dist-release/
+release-notes-*.md
+
