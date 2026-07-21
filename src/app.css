@@ -634,6 +634,14 @@ html, body {
   flex-shrink: 1;
 }
 
+.parent-btn.drop-folder {
+  outline: 1.5px dashed var(--pastel-mint);
+  outline-offset: 2px;
+  color: var(--pastel-mint);
+  border-color: var(--pastel-mint);
+  background: rgba(155, 233, 223, 0.12);
+}
+
 .parent-btn {
   padding: 2px 10px;
   font-size: 11px;

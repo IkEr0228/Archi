@@ -1175,13 +1175,20 @@
         <div class="breadcrumbs-container">
           <BreadcrumbsComponent 
             currentInternalPath={currentInternalPath} 
+            canDrop={canEditBase}
             onNavigate={handleNavigate} 
           />
           {#if currentInternalPath !== '/' && currentInternalPath}
+            {@const upPath = (() => {
+              const parts = currentInternalPath.split('/').filter(Boolean);
+              parts.pop();
+              return parts.length ? parts.join('/') : '/';
+            })()}
             <button 
               onclick={handleNavigateBack}
               class="parent-btn monospace"
-              title="Go to Parent Folder"
+              data-drop-folder={canEditBase ? upPath : undefined}
+              title={canEditBase ? 'Go up · drop files here to move to parent' : 'Go to Parent Folder'}
             >
               Up
             </button>

@@ -246,23 +246,64 @@
     return [path];
   }
 
+  /** Parent of current folder (`/` when one level deep). */
+  function parentFolderPath(path: string): string {
+    if (!path || path === '/') return '/';
+    const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+    parts.pop();
+    return parts.length ? parts.join('/') : '/';
+  }
+
+  let parentDropPath = $derived(
+    currentInternalPath && currentInternalPath !== '/'
+      ? parentFolderPath(currentInternalPath as string)
+      : null
+  );
+  let showParentUpRow = $derived(!!parentDropPath);
+
+  /**
+   * Resolve drop folder under the pointer.
+   * Supports table folder rows, parent ".." row, breadcrumbs, and Up button
+   * via `[data-drop-folder]` (path or `/` for archive root).
+   */
   function folderUnderPoint(clientX: number, clientY: number): string | null {
     const el = document.elementFromPoint(clientX, clientY);
     if (!el) return null;
+    const dropEl = el.closest('[data-drop-folder]') as HTMLElement | null;
+    if (dropEl?.dataset.dropFolder != null && dropEl.dataset.dropFolder !== '') {
+      return dropEl.dataset.dropFolder;
+    }
     const row = el.closest('tr[data-entry-path]') as HTMLElement | null;
     if (!row || row.dataset.isDir !== 'true') return null;
     return row.dataset.entryPath ?? null;
   }
 
   function isValidMoveDest(sources: string[], dest: string): boolean {
+    // Root (`/` or '') is always a valid destination for move-out-of-folder.
+    if (!dest || dest === '/') return true;
     return !sources.some((s) => dest === s || dest.startsWith(s + '/'));
+  }
+
+  /** Highlight table rows + external targets (breadcrumbs, Up) sharing data-drop-folder. */
+  function setDropHighlight(dest: string | null) {
+    dragOverFolder = dest;
+    if (typeof document === 'undefined') return;
+    for (const node of document.querySelectorAll('[data-drop-folder]')) {
+      const el = node as HTMLElement;
+      const path = el.dataset.dropFolder ?? '';
+      const match =
+        dest != null &&
+        (path === dest ||
+          ((dest === '/' || dest === '') && (path === '/' || path === '')));
+      el.classList.toggle('drop-folder', match);
+    }
   }
 
   function clearInternalDrag() {
     pendingDrag = null;
     activeDragSources = null;
     isInternalDragging = false;
-    dragOverFolder = null;
+    setDropHighlight(null);
   }
 
   function onPointerMoveDuringDrag(e: PointerEvent) {
@@ -295,9 +336,9 @@
 
     const folder = folderUnderPoint(e.clientX, e.clientY);
     if (folder && isValidMoveDest(sources, folder)) {
-      dragOverFolder = folder;
+      setDropHighlight(folder);
     } else {
-      dragOverFolder = null;
+      setDropHighlight(null);
     }
   }
 
@@ -494,6 +535,33 @@
       </tr>
     </thead>
     <tbody>
+      {#if showParentUpRow && parentDropPath}
+        <tr
+          class="data-row parent-up-row"
+          class:drop-folder={dragOverFolder === parentDropPath}
+          data-drop-folder={parentDropPath}
+          data-is-dir="true"
+          title="Go up one level (drop files here to move out of this folder)"
+          onclick={() => onNavigate(parentDropPath)}
+          ondblclick={() => onNavigate(parentDropPath)}
+        >
+          <td>
+            <div class="name-cell-inner">
+              <span class="icon-span parent-up-icon" aria-hidden="true">↑</span>
+              <div class="name-stack">
+                <span class="name-text">..</span>
+                {#if archiveMode}
+                  <span class="path-text">Parent folder</span>
+                {/if}
+              </div>
+            </div>
+          </td>
+          <td>{'<DIR>'}</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+      {/if}
       {#if visibleEntries.length === 0}
         <tr>
           <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">
@@ -512,6 +580,7 @@
             class:focused={focusedIndex === index}
             class:drop-folder={dragOverFolder === entry.path}
             data-entry-path={entry.path as string}
+            data-drop-folder={entry.is_directory ? (entry.path as string) : undefined}
             data-is-dir={entry.is_directory ? 'true' : 'false'}
             onpointerdown={(e) => handleRowPointerDown(e, index)}
             onclick={(e) => handleRowClickGuarded(e, index)}
@@ -590,7 +659,7 @@
     outline: 1.5px dotted var(--pastel-rose) !important;
     outline-offset: -1.5px;
   }
-  :global(.archive-table-container.can-internal-drag) tr.data-row {
+  :global(.archive-table-container.can-internal-drag) tr.data-row:not(.parent-up-row) {
     cursor: grab;
   }
   :global(.archive-table-container.internal-dragging) {
@@ -599,5 +668,16 @@
   }
   :global(.archive-table-container.internal-dragging) tr.data-row {
     cursor: grabbing;
+  }
+  tr.parent-up-row {
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  tr.parent-up-row .name-text {
+    font-weight: 600;
+  }
+  .parent-up-icon {
+    font-size: 14px;
+    opacity: 0.85;
   }
 </style>

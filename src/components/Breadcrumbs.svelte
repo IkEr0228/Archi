@@ -1,6 +1,12 @@
 <script lang="ts">
-  let { currentInternalPath = '/', onNavigate } = $props<{
+  let {
+    currentInternalPath = '/',
+    /** When true, crumbs expose data-drop-folder for in-archive pointer move. */
+    canDrop = false,
+    onNavigate
+  } = $props<{
     currentInternalPath?: string;
+    canDrop?: boolean;
     onNavigate: (path: string) => void;
   }>();
 
@@ -9,7 +15,7 @@
     if (!currentInternalPath || currentInternalPath === '/') {
       return list;
     }
-    
+
     let parts = currentInternalPath.split('/').filter(Boolean);
     let accum = '';
     for (let part of parts) {
@@ -32,7 +38,11 @@
 <nav aria-label="breadcrumb" class="breadcrumbs" title={currentInternalPath || '/'}>
   <ol>
     {#each breadcrumbs as crumb, i (crumb.path)}
-      <li class="breadcrumbs-item" class:active={i === breadcrumbs.length - 1}>
+      <li
+        class="breadcrumbs-item"
+        class:active={i === breadcrumbs.length - 1}
+        data-drop-folder={canDrop ? crumb.path : undefined}
+      >
         {#if i > 0}
           <span class="separator" aria-hidden="true">/</span>
         {/if}
@@ -42,7 +52,7 @@
           <button
             type="button"
             class="link-btn"
-            title={crumb.path}
+            title={canDrop ? `Open or drop here: ${crumb.path}` : crumb.path}
             onclick={(e) => handleClick(e, crumb.path)}
           >{crumb.name}</button>
         {/if}
@@ -64,5 +74,15 @@
   }
   .link-btn:hover {
     text-decoration: underline;
+  }
+  :global(.breadcrumbs-item.drop-folder) {
+    outline: 1.5px dashed var(--pastel-mint);
+    outline-offset: 2px;
+    border-radius: 3px;
+    background: rgba(155, 233, 223, 0.12);
+  }
+  :global(.breadcrumbs-item.drop-folder) .link-btn,
+  :global(.breadcrumbs-item.drop-folder) > span:not(.separator) {
+    color: var(--pastel-mint);
   }
 </style>
