@@ -105,6 +105,47 @@
     strategy_used?: string | null;
   }
 
+  /** Matches backend EditStrategyPref camelCase serde. */
+  type EditStrategy = 'auto' | 'preferFast' | 'preferCompact';
+
+  interface EditOptions {
+    strategy?: EditStrategy | null;
+    compression?: 'store' | 'fast' | 'normal' | 'max' | null;
+  }
+
+  const EDIT_STRATEGY_KEY = 'archi.editStrategy';
+
+  function loadEditStrategy(): EditStrategy {
+    try {
+      const raw = localStorage.getItem(EDIT_STRATEGY_KEY);
+      if (raw === 'auto' || raw === 'preferFast' || raw === 'preferCompact') return raw;
+    } catch {
+      /* ignore */
+    }
+    return 'auto';
+  }
+
+  function strategyLabel(strategy: string | null | undefined): string {
+    switch (strategy) {
+      case 'append':
+        return 'append';
+      case 'logical_delete':
+        return 'fast delete';
+      case 'pack_copy':
+        return 'pack-copy';
+      case 'stream_rebuild':
+        return 'stream rebuild';
+      case 'repack':
+        return 'repack';
+      case 'rebuild':
+        return 'rebuild';
+      case 'compact':
+        return 'compact';
+      default:
+        return strategy || 'done';
+    }
+  }
+
   const emptyStats: ArchiveStats = {
     file_count: 0,
     folder_count: 0,
@@ -254,6 +295,24 @@
   let canNewFolder = $derived(canEditBase);
   let canDelete = $derived(canEditBase && selectedPaths.size > 0);
   let canRename = $derived(canEditBase && selectedPaths.size === 1);
+  let canCompact = $derived(canEditBase);
+  let canEditStrategy = $derived(isArchiveOpen && archiveCapabilities.edit);
+
+  /** Edit speed preference (Auto / Fast / Compact); persisted in localStorage. */
+  let editStrategy = $state<EditStrategy>(loadEditStrategy());
+
+  function currentEditOptions(): EditOptions {
+    return { strategy: editStrategy };
+  }
+
+  function handleEditStrategyChange(strategy: EditStrategy) {
+    editStrategy = strategy;
+    try {
+      localStorage.setItem(EDIT_STRATEGY_KEY, strategy);
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }
 
   // Rebuild only when the open archive entry list changes (open/edit/reload).
   let archiveIndexes = $derived(buildArchiveIndexes(archiveEntries));
@@ -849,7 +908,8 @@
       const summary = await work(operationId);
       if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
 
-      operationStatus = `${label} complete (${summary.members_written} members).`;
+      const how = strategyLabel(summary.strategy_used);
+      operationStatus = `${label} complete · ${how} · ${summary.members_written} members.`;
       await openArchiveAtPath(zipPath, { preserveInternalPath: preservePath });
     } catch (e: any) {
       if (operationId && activeOperation?.id !== operationId) return;
@@ -877,7 +937,8 @@
       invoke<EditSummary>('delete_archive_entries_command', {
         operationId,
         archivePath: currentArchivePath,
-        paths
+        paths,
+        options: currentEditOptions()
       })
     );
   }
@@ -905,7 +966,8 @@
         operationId,
         archivePath: currentArchivePath,
         fromPath,
-        toPath
+        toPath,
+        options: currentEditOptions()
       })
     );
   }
@@ -926,7 +988,8 @@
       invoke<EditSummary>('create_archive_folder_command', {
         operationId,
         archivePath: currentArchivePath,
-        folderPath
+        folderPath,
+        options: currentEditOptions()
       })
     );
   }
@@ -940,7 +1003,8 @@
         operationId,
         archivePath: currentArchivePath,
         sourcePaths: sources,
-        archiveParent
+        archiveParent,
+        options: currentEditOptions()
       })
     );
   }
@@ -989,7 +1053,8 @@
         operationId,
         archivePath: currentArchivePath,
         sourcePaths: sources,
-        destFolder: dest
+        destFolder: dest,
+        options: currentEditOptions()
       })
     );
   }
@@ -1008,12 +1073,31 @@
           operationId,
           archivePath: currentArchivePath,
           entryPath,
-          sourceFile
+          sourceFile,
+          options: currentEditOptions()
         })
       );
     } catch (e: any) {
       errorMessage = `Could not select replacement file: ${formatInvokeError(e)}`;
     }
+  }
+
+  async function handleCompactArchive() {
+    if (!canCompact || !currentArchivePath) return;
+    if (
+      !window.confirm(
+        'Rewrite this archive cleanly?\n\nZIP: reclaims space left by Fast delete.\nOther formats: full stream rewrite of current entries.'
+      )
+    ) {
+      return;
+    }
+    await runEditOperation('Compact', (operationId) =>
+      invoke<EditSummary>('compact_archive_command', {
+        operationId,
+        archivePath: currentArchivePath,
+        options: currentEditOptions()
+      })
+    );
   }
 </script>
 
@@ -1034,6 +1118,9 @@
     canRename={canRename}
     canDelete={canDelete}
     canReplace={canReplace}
+    canCompact={canCompact}
+    canEditStrategy={canEditStrategy}
+    editStrategy={editStrategy}
     extractTitle={extractTitle}
     onOpenArchive={handleOpenArchive}
     onCreateArchive={handleCreateArchive}
@@ -1049,6 +1136,8 @@
     onRename={handleRenameEntry}
     onDelete={handleDeleteEntries}
     onReplace={handleReplaceFile}
+    onCompact={handleCompactArchive}
+    onEditStrategyChange={handleEditStrategyChange}
     onFileAssociations={openAssociationsModal}
   />
 

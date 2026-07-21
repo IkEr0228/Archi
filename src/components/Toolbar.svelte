@@ -12,6 +12,9 @@
     canRename = false,
     canDelete = false,
     canReplace = false,
+    canCompact = false,
+    canEditStrategy = false,
+    editStrategy = 'auto' as 'auto' | 'preferFast' | 'preferCompact',
     extractTitle = "Extract All Files",
     onOpenArchive,
     onCreateArchive,
@@ -27,6 +30,8 @@
     onRename,
     onDelete,
     onReplace,
+    onCompact,
+    onEditStrategyChange,
     onFileAssociations,
   } = $props<{
     canExtract?: boolean;
@@ -39,6 +44,9 @@
     canRename?: boolean;
     canDelete?: boolean;
     canReplace?: boolean;
+    canCompact?: boolean;
+    canEditStrategy?: boolean;
+    editStrategy?: 'auto' | 'preferFast' | 'preferCompact';
     extractTitle?: string;
     onOpenArchive: () => void;
     onCreateArchive: () => void;
@@ -54,6 +62,8 @@
     onRename: () => void;
     onDelete: () => void;
     onReplace: () => void;
+    onCompact: () => void;
+    onEditStrategyChange: (strategy: 'auto' | 'preferFast' | 'preferCompact') => void;
     onFileAssociations: () => void;
   }>();
 
@@ -203,7 +213,7 @@
     onclick={onAddToArchive}
     disabled={!canAdd}
     aria-label="Add Files to Archive"
-    title={canAdd ? "Add files or folders to the current archive folder" : "ZIP edit unavailable"}
+    title={canAdd ? "Add files or folders to the current archive folder" : "Edit unavailable for this archive"}
   >
     Add
   </button>
@@ -212,7 +222,7 @@
     onclick={onNewFolder}
     disabled={!canNewFolder}
     aria-label="New Folder in Archive"
-    title={canNewFolder ? "Create a folder in the current archive folder" : "ZIP edit unavailable"}
+    title={canNewFolder ? "Create a folder in the current archive folder" : "Edit unavailable for this archive"}
   >
     New Folder
   </button>
@@ -230,7 +240,7 @@
     onclick={onDelete}
     disabled={!canDelete}
     aria-label="Delete Selected Entries"
-    title={canDelete ? "Delete selected entries" : "Select entries to delete"}
+    title={canDelete ? "Delete selected entries (speed follows Edit mode)" : "Select entries to delete"}
   >
     Delete
   </button>
@@ -243,6 +253,43 @@
   >
     Replace
   </button>
+  <button
+    type="button"
+    onclick={onCompact}
+    disabled={!canCompact}
+    aria-label="Compact Archive"
+    title={
+      canCompact
+        ? "Rewrite archive cleanly (reclaim space after fast ZIP delete)"
+        : "Open an editable archive to compact"
+    }
+  >
+    Compact
+  </button>
+
+  <label
+    class="toolbar-edit-mode"
+    class:disabled={!canEditStrategy}
+    title="Edit mode: Auto balances speed and size; Fast prefers logical/pack-copy; Compact always full rebuild"
+  >
+    <span class="toolbar-edit-mode-label">Edit</span>
+    <select
+      class="monospace"
+      disabled={!canEditStrategy}
+      value={editStrategy}
+      aria-label="Edit speed mode"
+      onchange={(e) => {
+        const v = (e.currentTarget as HTMLSelectElement).value;
+        if (v === 'auto' || v === 'preferFast' || v === 'preferCompact') {
+          onEditStrategyChange(v);
+        }
+      }}
+    >
+      <option value="auto">Auto</option>
+      <option value="preferFast">Fast</option>
+      <option value="preferCompact">Compact</option>
+    </select>
+  </label>
 
   <span class="toolbar-sep" aria-hidden="true"></span>
 

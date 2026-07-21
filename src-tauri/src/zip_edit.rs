@@ -1569,3 +1569,25 @@ pub fn replace_file(
     let planned = plan_replace_file(&members, entry_path, source_file)?;
     rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)
 }
+
+/// Full clean rebuild of every CD-visible member (reclaims orphan local data after logical delete).
+pub fn compact_archive(
+    zip_path: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    require_zip_file(zip_path)?;
+    let (_, members) = open_source_members(zip_path)?;
+    let planned: Vec<RebuildMember> = members
+        .iter()
+        .map(|member| RebuildMember::Copy {
+            index: member.index,
+            out_path: member.path.clone(),
+            is_dir: member.is_dir,
+        })
+        .collect();
+    let mut summary = rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)?;
+    summary.strategy_used = Some("compact".into());
+    Ok(summary)
+}

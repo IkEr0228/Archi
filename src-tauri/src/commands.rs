@@ -14,7 +14,8 @@ use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
 use crate::tar_create::create_tar_archive;
 use crate::archive_edit::{
-    add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
+    add_paths, compact_archive, create_folder, delete_entries, move_entries, rename_entry,
+    replace_file,
 };
 use crate::testing::test_archive;
 use crate::zipper::create_zip_archive;
@@ -427,6 +428,36 @@ pub async fn move_archive_entries_command(
             Path::new(&archive_path),
             &source_paths,
             &dest_folder,
+            &worker_operation_id,
+            &cancelled,
+            move |progress| emit_edit_progress(&progress_app, progress),
+            &edit_options,
+        )
+    })
+    .await;
+    registry.finish(&operation_id);
+    result.map_err(|error| CommandError::new("worker_failed", error.to_string()))?
+}
+
+/// Full clean rewrite (ZIP reclaims orphan local data after fast logical delete).
+#[command]
+pub async fn compact_archive_command(
+    app: tauri::AppHandle,
+    registry: State<'_, OperationRegistry>,
+    operation_id: String,
+    archive_path: String,
+    options: Option<EditOptions>,
+) -> Result<EditSummary, CommandError> {
+    let state = registry
+        .start_edit(&operation_id, &archive_path)
+        .map_err(|message| CommandError::new("operation_failed", message))?;
+    let cancelled = state.cancelled.clone();
+    let progress_app = app.clone();
+    let worker_operation_id = operation_id.clone();
+    let edit_options = options.unwrap_or_default();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        compact_archive(
+            Path::new(&archive_path),
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),

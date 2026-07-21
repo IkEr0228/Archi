@@ -543,6 +543,42 @@ pub fn replace_file(
     }
 }
 
+/// Full clean rewrite of the archive (ZIP reclaims orphan local data after logical delete).
+pub fn compact_archive(
+    archive_path: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
+) -> Result<EditSummary, CommandError> {
+    match detect_format(archive_path)? {
+        ArchiveFormat::Zip => {
+            zip_edit::compact_archive(archive_path, operation_id, cancelled, emit)
+        }
+        ArchiveFormat::SevenZ => sevenz_edit::compact_archive(
+            archive_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
+        ArchiveFormat::Tar
+        | ArchiveFormat::TarGz
+        | ArchiveFormat::TarBz2
+        | ArchiveFormat::TarXz => tar_edit::compact_archive(
+            archive_path,
+            operation_id,
+            cancelled,
+            emit,
+            options,
+        ),
+        other => Err(edit_error(
+            "unsupported_operation",
+            format!("Compact is not supported for {} archives.", other.as_str()),
+        )),
+    }
+}
+
 /// Move archive entries into `dest_folder` (empty = root). Leaf names preserved.
 pub fn move_entries(
     archive_path: &Path,

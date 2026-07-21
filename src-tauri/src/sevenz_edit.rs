@@ -1589,6 +1589,40 @@ pub fn add_paths(
     )
 }
 
+/// Full rewrite keeping every member (normalizes layout; drops unused packs when pack-copy path runs).
+pub fn compact_archive(
+    archive_path: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
+) -> Result<EditSummary, CommandError> {
+    require_sevenz_file(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path)?;
+    let planned: Vec<RebuildMember> = members
+        .iter()
+        .enumerate()
+        .map(|(index, member)| RebuildMember::Copy {
+            index,
+            out_path: member.path.clone(),
+            is_dir: member.is_dir,
+        })
+        .collect();
+    let mut summary = apply_planned(
+        archive_path,
+        is_solid,
+        &members,
+        planned,
+        operation_id,
+        cancelled,
+        options,
+        emit,
+        |_work| Ok(()),
+    )?;
+    summary.strategy_used = Some("compact".into());
+    Ok(summary)
+}
+
 /// Replaces an existing file entry's content from a disk file (same archive path).
 pub fn replace_file(
     archive_path: &Path,

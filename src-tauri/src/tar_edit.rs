@@ -1569,3 +1569,36 @@ pub fn replace_file(
         emit,
     )
 }
+
+/// Full stream rewrite of every member (normalizes container; reclaim layout).
+pub fn compact_archive(
+    archive_path: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+    options: &EditOptions,
+) -> Result<EditSummary, CommandError> {
+    let fmt = require_tar_family(archive_path)?;
+    let members = open_source_members(archive_path, fmt)?;
+    let planned: Vec<RebuildMember> = members
+        .iter()
+        .enumerate()
+        .map(|(index, member)| RebuildMember::Copy {
+            index,
+            out_path: member.path.clone(),
+            is_dir: member.is_dir,
+        })
+        .collect();
+    let mut summary = apply_edit(
+        archive_path,
+        planned,
+        &members,
+        fmt,
+        operation_id,
+        cancelled,
+        options,
+        emit,
+    )?;
+    summary.strategy_used = Some("compact".into());
+    Ok(summary)
+}

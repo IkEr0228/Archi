@@ -61,6 +61,7 @@ fn main() {
             commands::add_to_archive_command,
             commands::replace_archive_file_command,
             commands::move_archive_entries_command,
+            commands::compact_archive_command,
             commands::select_archive_file,
             commands::select_directory,
             commands::select_save_archive,
