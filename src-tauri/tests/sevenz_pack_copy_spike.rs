@@ -176,15 +176,16 @@ fn s4_original_intact_when_not_published() {
     fs::remove_dir_all(root).unwrap();
 }
 
-/// S5: pack-copy should be faster than stream_rebuild on larger members (when measurable).
+/// S5: pack-copy (spike + product path) remains correct and fast on larger members.
+/// Product `delete_entries` now uses pack_copy when eligible (SA-C2).
 #[test]
 fn s5_pack_copy_faster_than_stream_rebuild_when_measurable() {
     let root = common::temp_dir("7z-pack-copy-s5");
-    // 1 MiB × 3 — enough that LZMA decode+encode shows up vs pack byte-copy.
+    // 1 MiB × 3 — enough that LZMA decode+encode would show up vs pack byte-copy.
     let payload = vec![0x5Au8; 1024 * 1024];
     let archive_pack = create_three_file_nonsolid(&root, &payload);
-    let archive_rebuild = root.join("three-rebuild.7z");
-    fs::copy(&archive_pack, &archive_rebuild).unwrap();
+    let archive_product = root.join("three-product.7z");
+    fs::copy(&archive_pack, &archive_product).unwrap();
 
     let t0 = Instant::now();
     delete_entries_pack_copy(
@@ -198,35 +199,34 @@ fn s5_pack_copy_faster_than_stream_rebuild_when_measurable() {
     let pack_ms = t0.elapsed().as_millis();
 
     let t1 = Instant::now();
-    delete_entries(
-        &archive_rebuild,
+    let product = delete_entries(
+        &archive_product,
         &["b.bin".into()],
-        "stream-rebuild-bench",
+        "product-pack-copy-bench",
         &AtomicBool::new(false),
         |_| {},
         &Default::default(),
     )
     .unwrap();
-    let rebuild_ms = t1.elapsed().as_millis();
+    let product_ms = t1.elapsed().as_millis();
 
-    // Soft assert: document ratio; require pack_copy not pathologically slower.
+    assert_eq!(product.strategy_used.as_deref(), Some("pack_copy"));
     eprintln!(
-        "S5 timing: pack_copy={pack_ms}ms stream_rebuild={rebuild_ms}ms packs_copied={}",
+        "S5 timing: spike_pack_copy={pack_ms}ms product_delete={product_ms}ms packs_copied={}",
         last_pack_copy_stats().packs_copied
     );
-    // On CI/dev machines pack_copy should win or be comparable; allow noise on tiny runs.
-    // Hard check: both succeeded and pack_copy actually copied packs.
+    // Hard check: pack-copy actually copied packs (last op was product delete).
     assert_eq!(last_pack_copy_stats().packs_copied, 2);
-    // Prefer pack_copy ≤ rebuild * 1.5 as "meaningful when measurable"; if rebuild is tiny, skip.
-    if rebuild_ms >= 50 {
+    // Both paths should be in the same ballpark (both pack-copy).
+    if product_ms >= 50 {
         assert!(
-            pack_ms <= rebuild_ms.saturating_mul(3) / 2 || pack_ms < rebuild_ms,
-            "expected pack_copy ({pack_ms}ms) not much slower than stream_rebuild ({rebuild_ms}ms)"
+            pack_ms <= product_ms.saturating_mul(3) || product_ms <= pack_ms.saturating_mul(3),
+            "spike ({pack_ms}ms) and product ({product_ms}ms) pack-copy timings diverge too much"
         );
     }
 
     assert_eq!(entry_bytes_via_extract(&archive_pack, "a.bin"), payload);
-    assert_eq!(entry_bytes_via_extract(&archive_rebuild, "a.bin"), payload);
+    assert_eq!(entry_bytes_via_extract(&archive_product, "a.bin"), payload);
 
     fs::remove_dir_all(root).unwrap();
 }

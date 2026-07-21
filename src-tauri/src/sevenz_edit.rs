@@ -1,5 +1,6 @@
-//! 7z stream-rebuild edit (non-solid): plan Keep/Rename/Drop/New → decode → re-encode.
-//! Solid archives fall back to extract → mutate → recreate (repack) at Normal compression.
+//! 7z edit: plan Keep/Rename/Drop/New → apply.
+//! Non-solid eligible: pack-stream byte-copy (fallback stream-rebuild).
+//! Solid archives: extract → mutate → recreate (repack).
 
 use crate::create_common::{
     cleanup_temp, create_temporary_archive, member_path_for_tar, open_source_file,
@@ -12,6 +13,9 @@ use crate::models::{
 };
 use crate::security::{is_link_or_reparse_point, validate_entry_path};
 use crate::sevenz_format::create_sevenz_archive;
+use crate::sevenz_pack_copy::{
+    assess_pack_copy_eligibility, pack_stream_rebuild, PackStreamMember,
+};
 use sevenz_rust2::encoder_options::Lzma2Options;
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
 use std::collections::{HashMap, HashSet};
@@ -1285,6 +1289,88 @@ fn repack_edit(
     result
 }
 
+/// Convert product rebuild plan into pack-copy plan (path-based).
+fn to_pack_stream_members(
+    members: &[SourceMember],
+    planned: &[RebuildMember],
+) -> Result<Vec<PackStreamMember>, CommandError> {
+    let mut out = Vec::with_capacity(planned.len());
+    for member in planned {
+        match member {
+            RebuildMember::Copy {
+                index,
+                out_path,
+                is_dir,
+            } => {
+                let src = members.get(*index).ok_or_else(|| {
+                    edit_error("invalid_archive", "Planned copy index out of range.")
+                })?;
+                out.push(PackStreamMember::Copy {
+                    source_path: src.path.clone(),
+                    out_path: out_path.clone(),
+                    is_dir: *is_dir,
+                });
+            }
+            RebuildMember::NewDirectory { path } => {
+                out.push(PackStreamMember::NewDirectory { path: path.clone() });
+            }
+            RebuildMember::NewFile { path, source } => {
+                out.push(PackStreamMember::NewFile {
+                    path: path.clone(),
+                    source: source.clone(),
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Non-solid path: try pack-copy when archive is eligible; on non-cancel failure fall back
+/// to full stream rebuild (mirrors ZIP append / logical-delete fallback).
+fn apply_nonsolid_planned(
+    archive_path: &Path,
+    members: &[SourceMember],
+    planned: &[RebuildMember],
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    compression: CompressionPreset,
+    mut emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    let pack_eligible = match ArchiveReader::open(archive_path, Password::empty()) {
+        Ok(reader) => assess_pack_copy_eligibility(reader.archive()).is_ok(),
+        Err(_) => false,
+    };
+
+    if pack_eligible {
+        if let Ok(pack_planned) = to_pack_stream_members(members, planned) {
+            match pack_stream_rebuild(
+                archive_path,
+                &pack_planned,
+                operation_id,
+                cancelled,
+                compression,
+                &mut emit,
+            ) {
+                Ok(summary) => return Ok(summary),
+                Err(error) if error.code == "cancelled" => return Err(error),
+                Err(_) => {
+                    // Non-cancel pack-copy failure → stream_rebuild.
+                }
+            }
+        }
+    }
+
+    stream_rebuild(
+        archive_path,
+        members,
+        planned,
+        operation_id,
+        cancelled,
+        compression,
+        emit,
+    )
+}
+
 fn apply_planned(
     archive_path: &Path,
     is_solid: bool,
@@ -1306,7 +1392,7 @@ fn apply_planned(
             solid_mutate,
         )
     } else {
-        stream_rebuild(
+        apply_nonsolid_planned(
             archive_path,
             members,
             &planned,

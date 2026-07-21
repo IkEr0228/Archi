@@ -1,23 +1,27 @@
-//! SA-C1 research spike: byte-copy unchanged non-solid 7z pack streams.
+//! Non-solid 7z pack-stream byte-copy edit path.
 //!
-//! **Not wired** into `sevenz_edit` product paths. Call only from tests / explicit
-//! spike entry points. Solid and multi-substream archives are always rejected.
+//! Eligibility + pack-slot helpers and `pack_stream_rebuild` are used by product
+//! `sevenz_edit::apply_planned`. Solid / multi-substream / multi-coder archives
+//! are refused so the product path can fall back to stream rebuild.
 
 use crate::create_common::{
-    cleanup_temp, create_temporary_archive, member_path_for_tar, progress_percentage,
-    publish_temp_archive, ProgressGate,
+    cleanup_temp, create_temporary_archive, member_path_for_tar, open_source_file,
+    progress_percentage, publish_temp_archive, ProgressGate,
 };
 use crate::extraction::normalize_entry_name;
-use crate::models::{CommandError, EditSummary, OperationProgress};
+use crate::models::{
+    CommandError, CompressionPreset, EditSummary, OperationProgress,
+};
 use crate::security::validate_entry_path;
+use sevenz_rust2::encoder_options::Lzma2Options;
 use sevenz_rust2::{
     Archive, ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, EncoderMethod, Password,
     SIGNATURE_HEADER_SIZE,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Counters returned by a successful pack-copy (for tests / S2 evidence).
@@ -27,7 +31,7 @@ pub struct PackCopyStats {
     pub packs_copied: u64,
     /// Total compressed bytes copied from source packs.
     pub pack_bytes_copied: u64,
-    /// Number of members re-encoded (new/dirty files). Zero for pure delete of one file.
+    /// Number of members re-encoded (new/dirty files).
     pub members_reencoded: u64,
     /// Number of empty directories written (no pack stream).
     pub directories_written: u64,
@@ -36,6 +40,7 @@ pub struct PackCopyStats {
 static LAST_PACK_COPY_STATS: AtomicU64 = AtomicU64::new(0);
 static LAST_PACK_BYTES: AtomicU64 = AtomicU64::new(0);
 static LAST_REENCODED: AtomicU64 = AtomicU64::new(0);
+static LAST_DIRS_WRITTEN: AtomicU64 = AtomicU64::new(0);
 
 /// Last successful pack-copy stats (process-local; for integration tests).
 pub fn last_pack_copy_stats() -> PackCopyStats {
@@ -43,7 +48,7 @@ pub fn last_pack_copy_stats() -> PackCopyStats {
         packs_copied: LAST_PACK_COPY_STATS.load(Ordering::SeqCst),
         pack_bytes_copied: LAST_PACK_BYTES.load(Ordering::SeqCst),
         members_reencoded: LAST_REENCODED.load(Ordering::SeqCst),
-        directories_written: 0,
+        directories_written: LAST_DIRS_WRITTEN.load(Ordering::SeqCst),
     }
 }
 
@@ -51,6 +56,7 @@ fn record_stats(stats: &PackCopyStats) {
     LAST_PACK_COPY_STATS.store(stats.packs_copied, Ordering::SeqCst);
     LAST_PACK_BYTES.store(stats.pack_bytes_copied, Ordering::SeqCst);
     LAST_REENCODED.store(stats.members_reencoded, Ordering::SeqCst);
+    LAST_DIRS_WRITTEN.store(stats.directories_written, Ordering::SeqCst);
 }
 
 fn edit_error(code: &str, message: impl Into<String>) -> CommandError {
@@ -123,6 +129,15 @@ fn selection_matches(entry_path: &str, selected: &str) -> bool {
     entry_path == selected || entry_path.starts_with(&(selected.to_owned() + "/"))
 }
 
+fn lzma2_level(preset: CompressionPreset) -> u32 {
+    match preset {
+        CompressionPreset::Store => 0,
+        CompressionPreset::Fast => 3,
+        CompressionPreset::Normal => 5,
+        CompressionPreset::Max => 9,
+    }
+}
+
 /// Why pack-copy is not eligible for this archive / plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackCopyIneligible {
@@ -151,6 +166,30 @@ impl PackCopyIneligible {
             Self::EmptySelection => "empty_selection",
             Self::NothingKept => "nothing_kept",
             Self::Other(s) => s.as_str(),
+        }
+    }
+}
+
+/// Planned member for pack-stream rebuild (mirrors sevenz_edit rebuild plan shape).
+#[derive(Debug, Clone)]
+pub enum PackStreamMember {
+    /// Byte-copy existing pack (optional rename via `out_path`).
+    Copy {
+        /// Normalized source path inside the archive.
+        source_path: String,
+        out_path: String,
+        is_dir: bool,
+    },
+    NewDirectory { path: String },
+    NewFile { path: String, source: PathBuf },
+}
+
+impl PackStreamMember {
+    pub fn out_path(&self) -> &str {
+        match self {
+            Self::Copy { out_path, .. } => out_path,
+            Self::NewDirectory { path } => path,
+            Self::NewFile { path, .. } => path,
         }
     }
 }
@@ -186,7 +225,7 @@ pub fn assess_pack_copy_eligibility(archive: &Archive) -> Result<(), PackCopyIne
             return Err(PackCopyIneligible::MultiPackStreams);
         }
         if block.coders.len() != 1 {
-            // Spike scope: single-coder folders only (Archi LZMA2 1:1).
+            // Single-coder folders only (Archi LZMA2 / COPY 1:1).
             return Err(PackCopyIneligible::MultiCoder);
         }
         let coder = &block.coders[0];
@@ -198,7 +237,7 @@ pub fn assess_pack_copy_eligibility(archive: &Archive) -> Result<(), PackCopyIne
         if method.id() == EncoderMethod::ID_AES256_SHA256 {
             return Err(PackCopyIneligible::EncryptedOrPassword);
         }
-        // Spike: only LZMA2 / COPY (Store) single-coder folders.
+        // Only LZMA2 / COPY (Store) single-coder folders.
         if method.id() != EncoderMethod::ID_LZMA2 && method.id() != EncoderMethod::ID_COPY {
             return Err(PackCopyIneligible::UnsupportedCoder);
         }
@@ -280,7 +319,6 @@ fn build_pack_slots(archive: &Archive) -> Result<Vec<PackSlot>, CommandError> {
             ));
         }
 
-        let _ = (block_index, pack_stream_index); // validated above via offsets
         slots.push(PackSlot {
             file_index,
             absolute_offset,
@@ -293,25 +331,55 @@ fn build_pack_slots(archive: &Archive) -> Result<Vec<PackSlot>, CommandError> {
     Ok(slots)
 }
 
-/// Spike entry: delete selected paths using pack-stream copy for kept non-solid members.
+fn write_new_file_entry(
+    writer: &mut ArchiveWriter<File>,
+    archive_path: &str,
+    source: &Path,
+    cancelled: &AtomicBool,
+) -> Result<(), CommandError> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(cancelled_error());
+    }
+    let meta = source.metadata().map_err(|error| {
+        edit_error(
+            "source_read",
+            format!("Cannot inspect source {}: {error}", source.display()),
+        )
+    })?;
+    if !meta.is_file() {
+        return Err(edit_error(
+            "invalid_source",
+            format!("Source is not a regular file: {}", source.display()),
+        ));
+    }
+    let reader = open_source_file(source).map_err(|error| {
+        edit_error(
+            "source_read",
+            format!("Cannot open source {}: {error}", source.display()),
+        )
+    })?;
+    let member = member_path_for_tar(archive_path);
+    writer
+        .push_archive_entry(SzEntry::from_path(source, member), Some(reader))
+        .map_err(map_sz_error)?;
+    Ok(())
+}
+
+/// Product / general pack-copy rebuild: byte-copy kept packs (with optional rename),
+/// re-encode NewFile members, write NewDirectory entries.
 ///
-/// Does **not** re-LZMA kept packs. Only re-encodes nothing for pure deletes of whole
-/// 1:1 blocks. New/dirty content is not supported on this spike path (use stream_rebuild).
-pub fn delete_entries_pack_copy(
+/// Caller must have verified archive eligibility (or handle `pack_copy_ineligible`).
+/// Atomic temp publish; cancel cleans temp and does not touch the original.
+pub fn pack_stream_rebuild(
     archive_path: &Path,
-    paths: &[String],
+    planned: &[PackStreamMember],
     operation_id: &str,
     cancelled: &AtomicBool,
+    compression: CompressionPreset,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<EditSummary, CommandError> {
     if operation_id.is_empty() {
         return Err(edit_error("invalid_operation", "Operation ID is empty."));
-    }
-    if paths.is_empty() {
-        return Err(edit_error(
-            "invalid_selection",
-            "No archive paths specified for delete.",
-        ));
     }
     if !archive_path.is_file() {
         return Err(edit_error(
@@ -321,11 +389,6 @@ pub fn delete_entries_pack_copy(
     }
     if cancelled.load(Ordering::Relaxed) {
         return Err(cancelled_error());
-    }
-
-    let mut selected = Vec::with_capacity(paths.len());
-    for raw in paths {
-        selected.push(normalize_and_validate(raw)?);
     }
 
     let reader = ArchiveReader::open(archive_path, Password::empty()).map_err(map_sz_error)?;
@@ -340,62 +403,58 @@ pub fn delete_entries_pack_copy(
     })?;
 
     let slots = build_pack_slots(&archive)?;
-    let slot_by_file: HashMap<usize, &PackSlot> =
-        slots.iter().map(|s| (s.file_index, s)).collect();
-
-    // Plan keep set by source file index.
-    let mut keep_file_indices: Vec<usize> = Vec::new();
-    let mut matched = false;
-    let mut keep_dirs: Vec<SzEntry> = Vec::new();
-
-    for (file_index, file) in archive.files.iter().enumerate() {
+    let mut slot_by_path: HashMap<String, &PackSlot> = HashMap::new();
+    let mut entry_by_path: HashMap<String, &SzEntry> = HashMap::new();
+    for file in &archive.files {
         if file.is_anti_item {
             continue;
         }
         let path = normalize_member_name(file.name())?;
-        let delete = selected.iter().any(|sel| selection_matches(&path, sel));
-        if delete {
-            matched = true;
-            continue;
+        entry_by_path.insert(path, file);
+    }
+    for slot in &slots {
+        let path = normalize_member_name(slot.entry.name())?;
+        slot_by_path.insert(path, slot);
+    }
+
+    // Validate every Copy can be satisfied (streamed → pack slot; dirs → entry).
+    for member in planned {
+        if let PackStreamMember::Copy {
+            source_path,
+            is_dir,
+            ..
+        } = member
+        {
+            match entry_by_path.get(source_path.as_str()) {
+                None => {
+                    return Err(edit_error(
+                        "invalid_archive",
+                        format!("Planned copy source missing from archive: {source_path}"),
+                    ));
+                }
+                Some(entry) if *is_dir || entry.is_directory || !entry.has_stream => {
+                    // Directory or non-streamed empty member — no pack required.
+                }
+                Some(_) if !slot_by_path.contains_key(source_path.as_str()) => {
+                    return Err(edit_error(
+                        "pack_copy_ineligible",
+                        format!("Kept streamed member has no pack slot: {source_path}"),
+                    ));
+                }
+                Some(_) => {}
+            }
         }
-        if !file.has_stream {
-            let mut entry = file.clone();
-            entry.name = member_path_for_tar(&path);
-            keep_dirs.push(entry);
-            keep_file_indices.push(file_index);
-        } else if slot_by_file.contains_key(&file_index) {
-            keep_file_indices.push(file_index);
-        } else {
-            return Err(edit_error(
-                "invalid_archive",
-                format!("Kept streamed member has no pack slot: {path}"),
-            ));
-        }
     }
 
-    if !matched {
-        return Err(edit_error(
-            "not_found",
-            "Delete selection matched no archive entries.",
-        ));
-    }
-    if keep_file_indices.is_empty() && keep_dirs.is_empty() {
-        // Deleting everything is still valid: write empty archive shell? Prefer explicit.
-        // Allow empty output: no members.
-    }
-
-    // Preserve original order of kept members.
-    keep_file_indices.sort_unstable();
-    let mut seen = HashSet::new();
-    keep_file_indices.retain(|i| seen.insert(*i));
-
-    let total = (keep_file_indices.len() + keep_dirs.len()) as u64;
+    let total = planned.len() as u64;
     let (temp_path, temp_file) = create_temporary_archive(archive_path)?;
+    let level = lzma2_level(compression);
 
     let result = (|| -> Result<(EditSummary, PackCopyStats), CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
-        // Header encoding uses content methods; default LZMA is fine.
         writer.set_encrypt_header(false);
+        // Content methods apply to newly encoded members only (NewFile).
+        writer.set_content_methods(vec![Lzma2Options::from_level(level).into()]);
 
         let mut source = File::open(archive_path).map_err(|e| {
             edit_error(
@@ -408,77 +467,112 @@ pub fn delete_entries_pack_copy(
         let mut processed = 0_u64;
         let mut progress_gate = ProgressGate::new();
 
-        // Write kept members in archive file order.
-        for file_index in &keep_file_indices {
+        for member in planned {
             if cancelled.load(Ordering::Relaxed) {
                 return Err(cancelled_error());
             }
-            let file = &archive.files[*file_index];
-            let path = normalize_member_name(file.name())?;
+            let current = member.out_path().to_string();
             if progress_gate.should_emit() {
                 emit(OperationProgress {
                     operation_id: operation_id.into(),
                     extracted_files: processed,
-                    total_files: total,
-                    current_file: path.clone(),
+                    total_files: total.max(1),
+                    current_file: current.clone(),
                     percentage: progress_percentage(processed, total.max(1)),
                     phase: Some("pack_copy".into()),
                 });
             }
 
-            if !file.has_stream {
-                let member = member_path_for_tar(&path);
-                writer
-                    .push_archive_entry(SzEntry::new_directory(&member), None::<File>)
-                    .map_err(map_sz_error)?;
-                stats.directories_written = stats.directories_written.saturating_add(1);
-                processed = processed.saturating_add(1);
-                continue;
+            match member {
+                PackStreamMember::Copy {
+                    source_path,
+                    out_path,
+                    is_dir,
+                } => {
+                    let src_entry = entry_by_path.get(source_path.as_str()).ok_or_else(|| {
+                        edit_error(
+                            "invalid_archive",
+                            format!("Missing source entry: {source_path}"),
+                        )
+                    })?;
+
+                    if *is_dir || src_entry.is_directory || !src_entry.has_stream {
+                        let member_name = member_path_for_tar(out_path);
+                        if *is_dir || src_entry.is_directory {
+                            writer
+                                .push_archive_entry(
+                                    SzEntry::new_directory(&member_name),
+                                    None::<File>,
+                                )
+                                .map_err(map_sz_error)?;
+                            stats.directories_written =
+                                stats.directories_written.saturating_add(1);
+                        } else {
+                            // Non-stream empty file: re-emit as empty new file.
+                            writer
+                                .push_archive_entry(SzEntry::new_file(&member_name), None::<File>)
+                                .map_err(map_sz_error)?;
+                            stats.members_reencoded = stats.members_reencoded.saturating_add(1);
+                        }
+                    } else {
+                        let slot = slot_by_path.get(source_path.as_str()).ok_or_else(|| {
+                            edit_error(
+                                "pack_copy_ineligible",
+                                format!("Missing pack slot for kept member: {source_path}"),
+                            )
+                        })?;
+
+                        source
+                            .seek(SeekFrom::Start(slot.absolute_offset))
+                            .map_err(|e| {
+                                edit_error(
+                                    "invalid_archive",
+                                    format!("Cannot seek pack stream: {e}"),
+                                )
+                            })?;
+                        let mut limited = (&mut source).take(slot.pack_size);
+
+                        let mut entry = slot.entry.clone();
+                        entry.name = member_path_for_tar(out_path);
+                        entry.has_stream = true;
+                        entry.has_crc = slot.entry.has_crc;
+                        entry.crc = slot.entry.crc;
+                        entry.size = slot.entry.size;
+
+                        let coder_refs: Vec<(EncoderMethod, &[u8])> = slot
+                            .coders
+                            .iter()
+                            .map(|(m, p)| (*m, p.as_slice()))
+                            .collect();
+
+                        writer
+                            .push_packed_entry(
+                                entry,
+                                &mut limited,
+                                &coder_refs,
+                                slot.unpack_sizes.clone(),
+                            )
+                            .map_err(map_sz_error)?;
+
+                        stats.packs_copied = stats.packs_copied.saturating_add(1);
+                        stats.pack_bytes_copied =
+                            stats.pack_bytes_copied.saturating_add(slot.pack_size);
+                    }
+                }
+                PackStreamMember::NewDirectory { path } => {
+                    let member_name = member_path_for_tar(path);
+                    writer
+                        .push_archive_entry(SzEntry::new_directory(&member_name), None::<File>)
+                        .map_err(map_sz_error)?;
+                    stats.directories_written = stats.directories_written.saturating_add(1);
+                }
+                PackStreamMember::NewFile { path, source: src } => {
+                    write_new_file_entry(&mut writer, path, src, cancelled)?;
+                    stats.members_reencoded = stats.members_reencoded.saturating_add(1);
+                }
             }
-
-            let slot = slot_by_file.get(file_index).ok_or_else(|| {
-                edit_error("invalid_archive", "Missing pack slot for kept member")
-            })?;
-
-            source
-                .seek(SeekFrom::Start(slot.absolute_offset))
-                .map_err(|e| {
-                    edit_error("invalid_archive", format!("Cannot seek pack stream: {e}"))
-                })?;
-            let mut limited = (&mut source).take(slot.pack_size);
-
-            let mut entry = slot.entry.clone();
-            entry.name = member_path_for_tar(&path);
-            // Ensure size/crc from source entry are preserved.
-            entry.has_stream = true;
-            entry.has_crc = slot.entry.has_crc;
-            entry.crc = slot.entry.crc;
-            entry.size = slot.entry.size;
-
-            let coder_refs: Vec<(EncoderMethod, &[u8])> = slot
-                .coders
-                .iter()
-                .map(|(m, p)| (*m, p.as_slice()))
-                .collect();
-
-            writer
-                .push_packed_entry(
-                    entry,
-                    &mut limited,
-                    &coder_refs,
-                    slot.unpack_sizes.clone(),
-                )
-                .map_err(map_sz_error)?;
-
-            stats.packs_copied = stats.packs_copied.saturating_add(1);
-            stats.pack_bytes_copied = stats.pack_bytes_copied.saturating_add(slot.pack_size);
             processed = processed.saturating_add(1);
         }
-
-        // keep_dirs already written when they appear in keep_file_indices (no stream).
-        // If we only collected keep_dirs separately without indices, write leftovers.
-        // In this plan, empty dirs are in keep_file_indices too when !has_stream.
-        let _ = keep_dirs;
 
         if cancelled.load(Ordering::Relaxed) {
             return Err(cancelled_error());
@@ -503,7 +597,6 @@ pub fn delete_entries_pack_copy(
             return Err(cancelled_error());
         }
 
-        // Snapshot original for failure integrity checks in tests (publish is atomic).
         publish_temp_archive(&temp_path, archive_path, true).map_err(|error| {
             edit_error(
                 "finalize_failed",
@@ -542,6 +635,85 @@ pub fn delete_entries_pack_copy(
     }
 }
 
+/// Spike entry: delete selected paths using pack-stream copy for kept non-solid members.
+pub fn delete_entries_pack_copy(
+    archive_path: &Path,
+    paths: &[String],
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    if operation_id.is_empty() {
+        return Err(edit_error("invalid_operation", "Operation ID is empty."));
+    }
+    if paths.is_empty() {
+        return Err(edit_error(
+            "invalid_selection",
+            "No archive paths specified for delete.",
+        ));
+    }
+    if !archive_path.is_file() {
+        return Err(edit_error(
+            "not_found",
+            format!("Archive not found: {}", archive_path.display()),
+        ));
+    }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(cancelled_error());
+    }
+
+    let mut selected = Vec::with_capacity(paths.len());
+    for raw in paths {
+        selected.push(normalize_and_validate(raw)?);
+    }
+
+    let reader = ArchiveReader::open(archive_path, Password::empty()).map_err(map_sz_error)?;
+    let archive = reader.archive().clone();
+    drop(reader);
+
+    assess_pack_copy_eligibility(&archive).map_err(|e| {
+        edit_error(
+            "pack_copy_ineligible",
+            format!("Pack-copy not eligible: {}", e.as_str()),
+        )
+    })?;
+
+    let mut planned = Vec::new();
+    let mut matched = false;
+    for file in &archive.files {
+        if file.is_anti_item {
+            continue;
+        }
+        let path = normalize_member_name(file.name())?;
+        let delete = selected.iter().any(|sel| selection_matches(&path, sel));
+        if delete {
+            matched = true;
+            continue;
+        }
+        planned.push(PackStreamMember::Copy {
+            source_path: path.clone(),
+            out_path: path,
+            is_dir: file.is_directory,
+        });
+    }
+
+    if !matched {
+        return Err(edit_error(
+            "not_found",
+            "Delete selection matched no archive entries.",
+        ));
+    }
+
+    pack_stream_rebuild(
+        archive_path,
+        &planned,
+        operation_id,
+        cancelled,
+        CompressionPreset::Normal,
+        emit,
+    )
+}
+
 /// True if the path is eligible for pack-copy (open + assess). Used by tests (S6).
 pub fn is_pack_copy_eligible(path: &Path) -> Result<bool, CommandError> {
     let reader = ArchiveReader::open(path, Password::empty()).map_err(map_sz_error)?;
@@ -553,8 +725,8 @@ pub fn is_pack_copy_eligible(path: &Path) -> Result<bool, CommandError> {
         | Err(PackCopyIneligible::MultiCoder)
         | Err(PackCopyIneligible::UnsupportedCoder)
         | Err(PackCopyIneligible::EncryptedOrPassword)
-        | Err(PackCopyIneligible::ComplexBind) => Ok(false),
-        Err(PackCopyIneligible::EmptySelection)
+        | Err(PackCopyIneligible::ComplexBind)
+        | Err(PackCopyIneligible::EmptySelection)
         | Err(PackCopyIneligible::NothingKept)
         | Err(PackCopyIneligible::Other(_)) => Ok(false),
     }
@@ -566,7 +738,6 @@ pub fn pack_copy_delete_to_temp_only(
     archive_path: &Path,
     paths: &[String],
 ) -> Result<std::path::PathBuf, CommandError> {
-    // Minimal: open, plan, write temp, do not publish.
     if paths.is_empty() {
         return Err(edit_error("invalid_selection", "empty"));
     }
@@ -605,20 +776,28 @@ pub fn pack_copy_delete_to_temp_only(
     let (temp_path, temp_file) = create_temporary_archive(archive_path)?;
     let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
     writer.set_encrypt_header(false);
-    let mut source = File::open(archive_path).map_err(|e| {
-        edit_error("invalid_archive", format!("open: {e}"))
-    })?;
+    let mut source = File::open(archive_path)
+        .map_err(|e| edit_error("invalid_archive", format!("open: {e}")))?;
 
     for file_index in keep {
         let file = &archive.files[file_index];
         let path = normalize_member_name(file.name())?;
         if !file.has_stream {
-            writer
-                .push_archive_entry(
-                    SzEntry::new_directory(&member_path_for_tar(&path)),
-                    None::<File>,
-                )
-                .map_err(map_sz_error)?;
+            if file.is_directory {
+                writer
+                    .push_archive_entry(
+                        SzEntry::new_directory(&member_path_for_tar(&path)),
+                        None::<File>,
+                    )
+                    .map_err(map_sz_error)?;
+            } else {
+                writer
+                    .push_archive_entry(
+                        SzEntry::new_file(&member_path_for_tar(&path)),
+                        None::<File>,
+                    )
+                    .map_err(map_sz_error)?;
+            }
             continue;
         }
         let slot = slot_by_file

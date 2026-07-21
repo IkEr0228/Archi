@@ -96,8 +96,18 @@ fn temporary_edit_archives(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Archi Fast non-solid fixtures are pack-copy eligible; product path reports "pack_copy".
+fn assert_pack_copy_strategy(summary: &archi_backend_lib::models::EditSummary) {
+    assert_eq!(
+        summary.strategy_used.as_deref(),
+        Some("pack_copy"),
+        "expected pack_copy for eligible non-solid Fast archive, got {:?}",
+        summary.strategy_used
+    );
+}
+
 #[test]
-fn delete_file_removes_entry_stream_rebuild() {
+fn delete_file_removes_entry_pack_copy() {
     let root = common::temp_dir("7z-edit-delete");
     let archive = create_sample_7z(&root);
 
@@ -113,7 +123,7 @@ fn delete_file_removes_entry_stream_rebuild() {
 
     assert_eq!(summary.operation_id, "7z-edit-delete-1");
     assert_eq!(summary.destination, archive.to_string_lossy());
-    assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
+    assert_pack_copy_strategy(&summary);
     assert!(summary.members_written >= 2);
 
     let names = entry_names(&archive);
@@ -141,7 +151,7 @@ fn rename_file_changes_path_and_preserves_content() {
     )
     .unwrap();
 
-    assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
+    assert_pack_copy_strategy(&summary);
     let names = entry_names(&archive);
     assert!(!names.iter().any(|n| n == "other.txt"));
     assert!(names.iter().any(|n| n == "renamed/new-name.txt"));
@@ -170,7 +180,7 @@ fn move_entries_relocates_leaf() {
     )
     .unwrap();
 
-    assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
+    assert_pack_copy_strategy(&summary);
     let names = entry_names(&archive);
     assert!(!names.iter().any(|n| n == "keep.txt"));
     assert!(names.iter().any(|n| n == "nested/keep.txt"));
@@ -197,7 +207,7 @@ fn create_folder_adds_directory() {
     )
     .unwrap();
 
-    assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
+    assert_pack_copy_strategy(&summary);
     let names = entry_names(&archive);
     assert!(names.iter().any(|n| n == "brand-new"));
     assert!(names.iter().any(|n| n == "keep.txt"));
@@ -223,7 +233,7 @@ fn add_file_into_parent() {
     )
     .unwrap();
 
-    assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
+    assert_pack_copy_strategy(&summary);
     let names = entry_names(&archive);
     assert!(names.iter().any(|n| n == "nested/added.txt"));
     assert_eq!(
@@ -256,7 +266,7 @@ fn replace_file_updates_content() {
     )
     .unwrap();
 
-    assert_eq!(summary.strategy_used.as_deref(), Some("stream_rebuild"));
+    assert_pack_copy_strategy(&summary);
     assert_eq!(
         entry_bytes_via_extract(&archive, "keep.txt"),
         b"replaced-payload"

@@ -15,7 +15,7 @@ pub mod operations;
 pub mod security;
 pub mod sevenz_edit;
 pub mod sevenz_format;
-/// Research spike: non-solid 7z pack-stream byte-copy (not wired into product edit path).
+/// Non-solid 7z pack-stream byte-copy (product path via `sevenz_edit::apply_planned`).
 pub mod sevenz_pack_copy;
 pub mod tar_create;
 pub mod tar_edit;
