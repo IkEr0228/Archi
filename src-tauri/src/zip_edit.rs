@@ -367,6 +367,154 @@ fn plan_rename(
     Ok(planned)
 }
 
+/// Plan moving archive entries into `dest_folder` (empty / "/" = archive root).
+/// Each source keeps its leaf name: `docs/a.txt` → `folder/a.txt`.
+fn plan_move(
+    members: &[SourceMember],
+    sources: &[String],
+    dest_folder: &str,
+) -> Result<Vec<RebuildMember>, CommandError> {
+    if sources.is_empty() {
+        return Err(edit_error(
+            "invalid_selection",
+            "No archive paths specified for move.",
+        ));
+    }
+
+    let dest = if dest_folder.is_empty() || dest_folder == "/" {
+        String::new()
+    } else {
+        normalize_and_validate(dest_folder)?
+    };
+
+    // Drop nested sources when a parent is also selected.
+    let mut from_paths: Vec<String> = Vec::new();
+    for raw in sources {
+        let p = normalize_and_validate(raw)?;
+        from_paths.push(p);
+    }
+    from_paths.sort();
+    from_paths.dedup();
+    let tops: Vec<String> = from_paths
+        .iter()
+        .filter(|p| {
+            !from_paths
+                .iter()
+                .any(|o| *o != **p && p.starts_with(&(o.clone() + "/")))
+        })
+        .cloned()
+        .collect();
+
+    let mut moves: Vec<(String, String)> = Vec::new();
+    for from in &tops {
+        let leaf = from.rsplit('/').next().unwrap_or(from.as_str());
+        let to = if dest.is_empty() {
+            leaf.to_string()
+        } else {
+            format!("{dest}/{leaf}")
+        };
+        if from == &to {
+            continue;
+        }
+        // Cannot move a folder into itself or a descendant.
+        if !dest.is_empty() && (dest == *from || dest.starts_with(&(from.clone() + "/"))) {
+            return Err(edit_error(
+                "invalid_entry",
+                format!("Cannot move '{from}' into itself or a subfolder."),
+            ));
+        }
+        // Source must exist.
+        let exists = members.iter().any(|m| {
+            m.path == *from || m.path.starts_with(&(from.clone() + "/"))
+        });
+        if !exists {
+            return Err(CommandError {
+                code: "not_found".into(),
+                message: format!("Move source is not in the archive: {from}"),
+                path: Some(from.clone()),
+            });
+        }
+        moves.push((from.clone(), to));
+    }
+
+    if moves.is_empty() {
+        return Err(edit_error(
+            "invalid_entry",
+            "Nothing to move (sources already at destination).",
+        ));
+    }
+
+    let mut planned = Vec::with_capacity(members.len());
+    let mut rewritten_targets: Vec<String> = Vec::new();
+
+    for member in members {
+        let mut out_path = member.path.clone();
+        for (from, to) in &moves {
+            if out_path == *from {
+                out_path = to.clone();
+            } else if out_path.starts_with(&(from.clone() + "/")) {
+                out_path = format!("{to}{}", &out_path[from.len()..]);
+            }
+        }
+        if out_path != member.path {
+            rewritten_targets.push(out_path.clone());
+        }
+        planned.push(RebuildMember::Copy {
+            index: member.index,
+            out_path,
+            is_dir: member.is_dir,
+        });
+    }
+
+    let kept: Vec<(&str, bool)> = planned
+        .iter()
+        .filter_map(|p| match p {
+            RebuildMember::Copy {
+                index,
+                out_path,
+                is_dir,
+            } => {
+                let original = members
+                    .iter()
+                    .find(|m| m.index == *index)
+                    .map(|m| m.path.as_str())
+                    .unwrap_or("");
+                if out_path.as_str() == original {
+                    Some((out_path.as_str(), *is_dir))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .collect();
+
+    for target in &rewritten_targets {
+        if kept.iter().any(|(kept_path, kept_is_dir)| {
+            path_hierarchy_collides(kept_path, *kept_is_dir, target)
+        }) {
+            return Err(CommandError {
+                code: "entry_exists".into(),
+                message: format!("Move destination already exists: {target}"),
+                path: Some(target.clone()),
+            });
+        }
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    for member in &planned {
+        if !seen.insert(member.out_path().to_string()) {
+            return Err(CommandError {
+                code: "entry_exists".into(),
+                message: format!("Move destination already exists: {}", member.out_path()),
+                path: Some(member.out_path().to_string()),
+            });
+        }
+    }
+
+    Ok(planned)
+}
+
 /// True when introducing `path` would collide with a kept archive entry.
 ///
 /// Collides when kept equals path, kept is under path/, or kept is a **file**
@@ -1000,6 +1148,21 @@ pub fn rename_entry(
     require_zip_file(zip_path)?;
     let (_, members) = open_source_members(zip_path)?;
     let planned = plan_rename(&members, from, to)?;
+    rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)
+}
+
+/// Moves entries into `dest_folder` (leaf names preserved). One ZIP rebuild.
+pub fn move_entries(
+    zip_path: &Path,
+    sources: &[String],
+    dest_folder: &str,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    require_zip_file(zip_path)?;
+    let (_, members) = open_source_members(zip_path)?;
+    let planned = plan_move(&members, sources, dest_folder)?;
     rebuild_archive(zip_path, &planned, operation_id, cancelled, emit)
 }
 

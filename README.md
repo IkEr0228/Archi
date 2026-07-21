@@ -10,7 +10,7 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 - **Multi-format open/list/extract:** ZIP, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
 - **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets
-- **Edit:** ZIP stream rebuild; TAR family + 7z extract/repack (add, folder, rename, delete, replace)
+- **Edit:** ZIP stream rebuild; TAR family + 7z extract/repack (add, folder, rename, delete, replace, **drag rows into folders**)
 - **Test:** all open formats — decompress/read integrity without writing user files
 - **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
 - **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes

@@ -25,9 +25,11 @@
     extension = '',
     sortKey = 'name',
     sortDir = 'asc' as 'asc' | 'desc',
+    canEdit = false,
     onSortChange,
     onNavigate,
-    onSelectionChange
+    onSelectionChange,
+    onMoveEntries
   } = $props<{
     visibleEntries: ArchiveEntry[];
     archiveMode?: boolean;
@@ -38,13 +40,19 @@
     extension?: string;
     sortKey?: string;
     sortDir?: 'asc' | 'desc';
+    /** When true, rows are draggable into folder rows (in-archive move). */
+    canEdit?: boolean;
     onSortChange: (key: string, dir: 'asc' | 'desc') => void;
     onNavigate: (path: string) => void;
     onSelectionChange: (paths: Set<string>) => void;
+    /** Move sources into dest folder path (archive-relative; '' or '/' = root). */
+    onMoveEntries?: (sources: string[], destFolder: string) => void;
   }>();
 
   let focusedIndex = $state(-1);
   let anchorIndex = $state(-1);
+  /** Folder path currently under an internal drag. */
+  let dragOverFolder = $state<string | null>(null);
   let container: HTMLDivElement;
   let scrollTop = $state(0);
   let viewportHeight = $state(400);
@@ -197,6 +205,90 @@
     }
   }
 
+  /** Prefer top-level paths when both a folder and its children are selected. */
+  function topLevelPaths(paths: string[]): string[] {
+    return paths.filter(
+      (p) => !paths.some((o) => o !== p && p.startsWith(o + '/'))
+    );
+  }
+
+  function handleDragStart(e: DragEvent, index: number) {
+    if (!canEdit || !onMoveEntries) {
+      e.preventDefault();
+      return;
+    }
+    const entry = visibleEntries[index];
+    if (!entry) {
+      e.preventDefault();
+      return;
+    }
+    const path = entry.path as string;
+    let paths: string[];
+    if (selectedPaths.has(path) && selectedPaths.size > 0) {
+      paths = topLevelPaths(Array.from(selectedPaths));
+    } else {
+      paths = [path];
+      // Ensure dragged row is selected for clear feedback.
+      onSelectionChange(new Set([path]));
+      focusedIndex = index;
+      anchorIndex = index;
+    }
+    e.dataTransfer?.setData('application/x-archi-internal', JSON.stringify(paths));
+    e.dataTransfer!.effectAllowed = 'move';
+  }
+
+  function handleDragOverRow(e: DragEvent, index: number) {
+    if (!canEdit || !onMoveEntries) return;
+    const entry = visibleEntries[index];
+    if (!entry?.is_directory) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'move';
+    dragOverFolder = entry.path as string;
+  }
+
+  function handleDragLeaveRow(e: DragEvent, index: number) {
+    const entry = visibleEntries[index];
+    if (entry && dragOverFolder === entry.path) {
+      // Only clear when leaving the row (not entering a child).
+      const related = e.relatedTarget as Node | null;
+      const row = e.currentTarget as HTMLElement;
+      if (related && row.contains(related)) return;
+      dragOverFolder = null;
+    }
+  }
+
+  function handleDropOnRow(e: DragEvent, index: number) {
+    if (!canEdit || !onMoveEntries) return;
+    const entry = visibleEntries[index];
+    if (!entry?.is_directory) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragOverFolder = null;
+    const raw = e.dataTransfer?.getData('application/x-archi-internal');
+    if (!raw) return;
+    let sources: string[] = [];
+    try {
+      sources = JSON.parse(raw) as string[];
+    } catch {
+      return;
+    }
+    if (!sources.length) return;
+    const dest = entry.path as string;
+    // Ignore drop into one of the sources (or a descendant of a source folder).
+    if (
+      sources.some(
+        (s) => dest === s || dest.startsWith(s + '/')
+      )
+    ) {
+      return;
+    }
+    onMoveEntries(sources, dest);
+  }
+
+  function handleDragEnd() {
+    dragOverFolder = null;
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
     if (visibleEntries.length === 0) return;
 
@@ -312,6 +404,13 @@
             class="data-row"
             class:selected={selectedPaths.has(entry.path as string)}
             class:focused={focusedIndex === index}
+            class:drop-folder={dragOverFolder === entry.path}
+            draggable={canEdit && !!onMoveEntries}
+            ondragstart={(e) => handleDragStart(e, index)}
+            ondragover={(e) => handleDragOverRow(e, index)}
+            ondragleave={(e) => handleDragLeaveRow(e, index)}
+            ondrop={(e) => handleDropOnRow(e, index)}
+            ondragend={handleDragEnd}
             onclick={(e) => handleRowClick(e, index)}
             ondblclick={() => handleDoubleClick(index)}
           >

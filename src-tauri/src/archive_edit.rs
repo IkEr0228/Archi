@@ -452,3 +452,80 @@ pub fn replace_file(
         )),
     }
 }
+
+/// Move archive entries into `dest_folder` (empty = root). Leaf names preserved.
+pub fn move_entries(
+    archive_path: &Path,
+    sources: &[String],
+    dest_folder: &str,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    emit: impl FnMut(OperationProgress),
+) -> Result<EditSummary, CommandError> {
+    match detect_format(archive_path)? {
+        ArchiveFormat::Zip => zip_edit::move_entries(
+            archive_path,
+            sources,
+            dest_folder,
+            operation_id,
+            cancelled,
+            emit,
+        ),
+        ArchiveFormat::Tar
+        | ArchiveFormat::TarGz
+        | ArchiveFormat::TarBz2
+        | ArchiveFormat::TarXz
+        | ArchiveFormat::SevenZ => {
+            let dest = if dest_folder.is_empty() || dest_folder == "/" {
+                String::new()
+            } else {
+                dest_folder.trim_matches('/').replace('\\', "/")
+            };
+            // Top-level sources only (drop nested when parent selected).
+            let mut from_paths: Vec<String> = sources
+                .iter()
+                .map(|s| s.trim_matches('/').replace('\\', "/"))
+                .filter(|s| !s.is_empty())
+                .collect();
+            from_paths.sort();
+            from_paths.dedup();
+            let tops: Vec<String> = from_paths
+                .iter()
+                .filter(|p| {
+                    !from_paths
+                        .iter()
+                        .any(|o| o != *p && p.starts_with(&(o.clone() + "/")))
+                })
+                .cloned()
+                .collect();
+
+            repack_edit(archive_path, operation_id, cancelled, emit, |work| {
+                for from in &tops {
+                    if !dest.is_empty()
+                        && (dest == *from || dest.starts_with(&(from.clone() + "/")))
+                    {
+                        return Err(edit_error(
+                            "invalid_entry",
+                            format!("Cannot move '{from}' into itself or a subfolder."),
+                        ));
+                    }
+                    let leaf = from.rsplit('/').next().unwrap_or(from.as_str());
+                    let to = if dest.is_empty() {
+                        leaf.to_string()
+                    } else {
+                        format!("{dest}/{leaf}")
+                    };
+                    if from == &to {
+                        continue;
+                    }
+                    apply_rename(work, from, &to)?;
+                }
+                Ok(())
+            })
+        }
+        other => Err(edit_error(
+            "unsupported_operation",
+            format!("Edit is not supported for {} archives.", other.as_str()),
+        )),
+    }
+}

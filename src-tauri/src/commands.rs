@@ -14,7 +14,7 @@ use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
 use crate::tar_create::create_tar_archive;
 use crate::archive_edit::{
-    add_paths, create_folder, delete_entries, rename_entry, replace_file,
+    add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
 };
 use crate::testing::test_archive;
 use crate::zipper::create_zip_archive;
@@ -379,6 +379,37 @@ pub async fn replace_archive_file_command(
             Path::new(&zip_path),
             &entry_path,
             Path::new(&source_file),
+            &worker_operation_id,
+            &cancelled,
+            move |progress| emit_edit_progress(&progress_app, progress),
+        )
+    })
+    .await;
+    registry.finish(&operation_id);
+    result.map_err(|error| CommandError::new("worker_failed", error.to_string()))?
+}
+
+/// Move archive entries into a destination folder (in-archive DnD).
+#[command]
+pub async fn move_archive_entries_command(
+    app: tauri::AppHandle,
+    registry: State<'_, OperationRegistry>,
+    operation_id: String,
+    zip_path: String,
+    source_paths: Vec<String>,
+    dest_folder: String,
+) -> Result<EditSummary, CommandError> {
+    let state = registry
+        .start(&operation_id)
+        .map_err(|message| CommandError::new("operation_failed", message))?;
+    let cancelled = state.cancelled.clone();
+    let progress_app = app.clone();
+    let worker_operation_id = operation_id.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        move_entries(
+            Path::new(&zip_path),
+            &source_paths,
+            &dest_folder,
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),

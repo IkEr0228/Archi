@@ -731,6 +731,16 @@ html, body {
   height: var(--archive-row-height);
 }
 
+.archive-table tbody tr.data-row[draggable='true'] {
+  cursor: grab;
+}
+
+.archive-table tbody tr.data-row.drop-folder {
+  outline: 1.5px dashed var(--pastel-mint);
+  outline-offset: -2px;
+  background: rgba(155, 233, 223, 0.1);
+}
+
 .archive-table tbody tr:hover {
   background: var(--bg-hover);
   color: var(--pastel-rose);

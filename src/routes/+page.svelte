@@ -969,6 +969,20 @@
     }
   }
 
+  /** In-archive drag-and-drop: move entries into a folder (leaf names kept). */
+  async function handleMoveEntries(sources: string[], destFolder: string) {
+    if (!canEditBase || activeOperation || !currentArchivePath || !sources.length) return;
+    const dest = destFolder === '/' ? '' : destFolder;
+    await runEditOperation('Move', (operationId) =>
+      invoke<EditSummary>('move_archive_entries_command', {
+        operationId,
+        zipPath: currentArchivePath,
+        sourcePaths: sources,
+        destFolder: dest
+      })
+    );
+  }
+
   async function handleReplaceFile() {
     if (!canReplace || !singleSelectedEntry || activeOperation) return;
     try {
@@ -1106,9 +1120,11 @@
         extension={extensionFilter}
         sortKey={sortKey}
         sortDir={sortDir}
+        canEdit={canEditBase}
         onSortChange={handleSortChange}
         onNavigate={handleNavigate}
         onSelectionChange={handleSelectionChange}
+        onMoveEntries={handleMoveEntries}
       />
     {:else}
       <EmptyStateComponent 
