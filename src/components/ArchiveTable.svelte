@@ -10,7 +10,7 @@
     uncompressed_size: number;
     compressed_size: number | null;
     modified_at: string | null;
-    method: string | null;
+    method?: string | null;
   }
 
   // Precomputed filtered+sorted rows from +page (single query pipeline).
@@ -56,8 +56,7 @@
   let range = $derived(getVirtualRange(visibleEntries.length, scrollTop, viewportHeight, rowHeight, OVERSCAN));
   let renderedEntries = $derived(visibleEntries.slice(range.start, range.end));
 
-  /** @type {number | null} */
-  let scrollRaf = null;
+  let scrollRaf: number | null = null;
 
   function handleScroll() {
     if (scrollRaf !== null) return;

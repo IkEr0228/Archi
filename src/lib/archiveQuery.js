@@ -9,6 +9,7 @@
  *   uncompressed_size: number,
  *   compressed_size: number | null,
  *   modified_at: string | null,
+ *   method?: string | null,
  *   nameLower?: string,
  *   pathLower?: string
  * }} ArchiveEntry

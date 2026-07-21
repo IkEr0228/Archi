@@ -1,7 +1,11 @@
 // @ts-check
 
 /**
- * @typedef {{ byParent: Map<string, object[]>, byPath: Map<string, object> }} ArchiveIndexes
+ * @typedef {import('./archiveQuery.js').ArchiveEntry} ArchiveEntry
+ */
+
+/**
+ * @typedef {{ byParent: Map<string, ArchiveEntry[]>, byPath: Map<string, ArchiveEntry> }} ArchiveIndexes
  */
 
 /**
@@ -12,11 +16,13 @@
  * Also attaches `nameLower` / `pathLower` on each entry once so archive search
  * can avoid repeated toLowerCase during filter.
  *
- * @param {Array<{ path: string, name?: string, parent_path?: string | null, nameLower?: string, pathLower?: string } & Record<string, unknown>> | null | undefined} entries
+ * @param {ArchiveEntry[] | null | undefined} entries
  * @returns {ArchiveIndexes}
  */
 export function buildArchiveIndexes(entries) {
+  /** @type {Map<string, ArchiveEntry[]>} */
   const byParent = new Map();
+  /** @type {Map<string, ArchiveEntry>} */
   const byPath = new Map();
   for (const entry of entries || []) {
     // Search lowercase caches (idempotent if rebuild runs again).

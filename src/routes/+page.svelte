@@ -254,10 +254,11 @@
   // Rebuild only when the open archive entry list changes (open/edit/reload).
   let archiveIndexes = $derived(buildArchiveIndexes(archiveEntries));
 
-  let singleSelectedEntry = $derived.by(() => {
+  let singleSelectedEntry = $derived.by((): ArchiveEntry | null => {
     if (selectedPaths.size !== 1) return null;
     const path = Array.from(selectedPaths)[0];
-    return archiveIndexes.byPath.get(path) ?? null;
+    const hit = archiveIndexes.byPath.get(path);
+    return hit ? (hit as ArchiveEntry) : null;
   });
 
   let canReplace = $derived(

@@ -25,7 +25,7 @@
 
   const extList = $derived(
     status?.associatedExtensions?.length
-      ? status.associatedExtensions.map((e) => `.${e}`).join(", ")
+      ? status.associatedExtensions.map((e: string) => `.${e}`).join(", ")
       : "—"
   );
 </script>

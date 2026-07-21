@@ -19,7 +19,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test:frontend": "node --test src/lib/*.test.js",
+    "test:frontend": "node --test \"src/lib/**/*.test.js\"",
     "tauri": "tauri"
   },
   "dependencies": {
