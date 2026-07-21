@@ -51,7 +51,8 @@ fn open_lists_tar_nested() {
     assert_eq!(info.format, "tar");
     assert!(info.capabilities.extract);
     assert!(!info.capabilities.create);
-    assert!(!info.capabilities.test);
+    assert!(info.capabilities.test);
+    assert!(info.capabilities.edit);
     assert!(info.entries.iter().any(|e| e.path == "dir"));
     assert!(info
         .entries

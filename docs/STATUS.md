@@ -18,8 +18,8 @@
 ## What works today
 
 - **ZIP:** open, list, search/filter/sort, extract (modes + conflicts), create, test, properties, edit, DnD open/create. Codecs: Stored + Deflate for extract/create/test/edit.
-- **Create formats:** ZIP, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, 7z (format picker + compression presets; 7z defaults to Max / LZMA2-9).
-- **TAR family / single-stream / 7z:** open, list, extract; create for multi-entry TAR family + 7z. 7z open/extract unencrypted only.
+- **Create formats (dropdown order):** ZIP, **7z**, TAR, TAR.GZ, TAR.BZ2, TAR.XZ (7z defaults to Max / LZMA2-9).
+- **TAR family + 7z:** open, list, extract, **test**, **edit** (repack). Single-stream gz/bz2/xz: open/list/extract/**test** only.
 - **CLI:** `archi.exe path\to\archive`; single-instance forwards a second launch to the first process.
 - **File associations:** opt-in per-user (HKCU) via toolbar **Associations**.
 - **Not enabled:** encrypted 7z, RAR, passwords UI, single-stream create, ZPAQ.

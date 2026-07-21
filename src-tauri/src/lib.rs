@@ -1,4 +1,5 @@
 pub mod archive;
+pub mod archive_edit;
 pub mod bzip2_format;
 pub mod cli_open;
 pub mod commands;

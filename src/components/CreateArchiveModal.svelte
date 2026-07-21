@@ -63,11 +63,11 @@
           onchange={(e) => onFormat(/** @type {any} */ (e.currentTarget.value))}
         >
           <option value="zip">ZIP</option>
+          <option value="sevenZ">7z</option>
           <option value="tar">TAR</option>
           <option value="tarGz">TAR.GZ</option>
           <option value="tarBz2">TAR.BZ2</option>
           <option value="tarXz">TAR.XZ</option>
-          <option value="sevenZ">7z</option>
         </select>
       </div>
       <div class="create-field create-output-row">

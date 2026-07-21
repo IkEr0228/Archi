@@ -38,7 +38,8 @@ fn create_open_extract_sevenz_round_trip() {
     let info = open_archive(&out).unwrap();
     assert_eq!(info.format, "7z");
     assert!(info.capabilities.extract);
-    assert!(!info.capabilities.edit);
+    assert!(info.capabilities.edit);
+    assert!(info.capabilities.test);
 
     extract_any(
         &out,

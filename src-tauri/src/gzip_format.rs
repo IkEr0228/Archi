@@ -55,9 +55,10 @@ fn read_only_capabilities() -> ArchiveCapabilities {
         list: true,
         extract: true,
         create: false,
+        // Single-stream: integrity test only (no multi-entry edit).
         edit: false,
         encrypt: false,
-        test: false,
+        test: true,
     }
 }
 

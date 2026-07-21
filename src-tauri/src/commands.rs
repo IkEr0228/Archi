@@ -4,7 +4,7 @@ use crate::file_assoc::{
     get_file_association_status, register_file_associations, unregister_file_associations,
     FileAssociationStatus,
 };
-use crate::format_detect::{detect_format, ArchiveFormat};
+
 use crate::models::{
     ArchiveInfo, CommandError, ConflictDecision, CreateFormat, CreateOptions, EditSummary,
     ExtractConflictEvent, OperationSummary, TestArchiveSummary,
@@ -13,8 +13,10 @@ use crate::operations::OperationRegistry;
 use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
 use crate::tar_create::create_tar_archive;
+use crate::archive_edit::{
+    add_paths, create_folder, delete_entries, rename_entry, replace_file,
+};
 use crate::testing::test_archive;
-use crate::zip_edit::{add_paths, create_folder, delete_entries, rename_entry, replace_file};
 use crate::zipper::create_zip_archive;
 use std::fs;
 use std::path::Path;
@@ -235,20 +237,6 @@ pub async fn create_archive_command(
     result.map_err(|error| CommandError::new("worker_failed", error.to_string()))?
 }
 
-/// Rejects non-ZIP archives before starting an edit operation.
-fn require_zip_edit_format(zip_path: &Path) -> Result<(), CommandError> {
-    match detect_format(zip_path)? {
-        ArchiveFormat::Zip => Ok(()),
-        other => Err(CommandError::new(
-            "unsupported_operation",
-            format!(
-                "ZIP edit is only supported for ZIP archives (detected {}).",
-                other.as_str()
-            ),
-        )),
-    }
-}
-
 fn emit_edit_progress(app: &AppHandle, progress: crate::models::OperationProgress) {
     if let Err(error) = app.emit("edit-progress", progress) {
         eprintln!("Failed to emit edit-progress: {error}");
@@ -263,7 +251,6 @@ pub async fn delete_archive_entries_command(
     zip_path: String,
     paths: Vec<String>,
 ) -> Result<EditSummary, CommandError> {
-    require_zip_edit_format(Path::new(&zip_path))?;
     let state = registry
         .start(&operation_id)
         .map_err(|message| CommandError::new("operation_failed", message))?;
@@ -293,7 +280,6 @@ pub async fn rename_archive_entry_command(
     from_path: String,
     to_path: String,
 ) -> Result<EditSummary, CommandError> {
-    require_zip_edit_format(Path::new(&zip_path))?;
     let state = registry
         .start(&operation_id)
         .map_err(|message| CommandError::new("operation_failed", message))?;
@@ -323,7 +309,6 @@ pub async fn create_archive_folder_command(
     zip_path: String,
     folder_path: String,
 ) -> Result<EditSummary, CommandError> {
-    require_zip_edit_format(Path::new(&zip_path))?;
     let state = registry
         .start(&operation_id)
         .map_err(|message| CommandError::new("operation_failed", message))?;
@@ -353,7 +338,6 @@ pub async fn add_to_archive_command(
     source_paths: Vec<String>,
     archive_parent: String,
 ) -> Result<EditSummary, CommandError> {
-    require_zip_edit_format(Path::new(&zip_path))?;
     let state = registry
         .start(&operation_id)
         .map_err(|message| CommandError::new("operation_failed", message))?;
@@ -384,7 +368,6 @@ pub async fn replace_archive_file_command(
     entry_path: String,
     source_file: String,
 ) -> Result<EditSummary, CommandError> {
-    require_zip_edit_format(Path::new(&zip_path))?;
     let state = registry
         .start(&operation_id)
         .map_err(|message| CommandError::new("operation_failed", message))?;

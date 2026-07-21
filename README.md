@@ -1,6 +1,6 @@
 # Archi
 
-**Windows archive manager** — open, browse, extract, create, and (for ZIP) edit archives with a focus on **safe extraction** and a modern desktop UI.
+**Windows archive manager** — open, browse, extract, create, test, and edit archives with a focus on **safe extraction** and a modern desktop UI.
 
 Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https://svelte.dev/). Companion spirit to the Niti file manager; this repository is self-contained.
 
@@ -10,8 +10,8 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 - **Multi-format open/list/extract:** ZIP, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
 - **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets
-- **ZIP edit:** add, new folder, rename, delete, replace (full rebuild, atomic publish)
-- **ZIP test:** stream CRC / decompress check with cancel
+- **Edit:** ZIP stream rebuild; TAR family + 7z extract/repack (add, folder, rename, delete, replace)
+- **Test:** all open formats — decompress/read integrity without writing user files
 - **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
 - **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes
 - **Conflicts:** overwrite / skip / rename / cancel (+ apply to all)
@@ -22,15 +22,15 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 | Format | Open / list | Extract | Create | Test | Edit | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| **ZIP** | Yes | Yes | Yes | Yes | Yes | Stored + Deflate. Exotic methods may list but do not extract. |
-| **TAR** | Yes | Yes | Yes | No | No | Create = store; symlink/special members not extracted. |
-| **TAR.GZ / TGZ** | Yes | Yes | Yes | No | No | |
-| **GZIP** (single) | Yes | Yes | No | No | No | |
-| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | No | No | |
-| **BZIP2** (single) | Yes | Yes | No | No | No | |
-| **TAR.XZ / TXZ** | Yes | Yes | Yes | No | No | |
-| **XZ** (single) | Yes | Yes | No | No | No | |
-| **7z** | Yes | Yes | Yes | No | No | LZMA/LZMA2 primary; unencrypted only for open/extract. |
+| **ZIP** | Yes | Yes | Yes | Yes | Yes | Stored + Deflate. Exotic methods may list but do not extract. Stream rebuild edit. |
+| **7z** | Yes | Yes | Yes | Yes | Yes | LZMA/LZMA2; unencrypted open. Edit = extract/repack (needs free disk). |
+| **TAR** | Yes | Yes | Yes | Yes | Yes | Create = store. Edit = extract/repack. |
+| **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | Edit = extract/repack. |
+| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | Edit = extract/repack. |
+| **TAR.XZ / TXZ** | Yes | Yes | Yes | Yes | Yes | Edit = extract/repack. |
+| **GZIP** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
+| **BZIP2** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
+| **XZ** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
 
 Capability flags from the backend drive the UI: unavailable actions stay disabled.
 
@@ -117,9 +117,13 @@ Hard fails (no modal): destination symlink/reparse, file↔directory conflicts, 
 | Exactly one path ending in `.zip` | Open that archive |
 | Any other non-empty drop | Open Create with those paths as sources |
 
-## Edit ZIP archive
+## Edit archive
 
-ZIP only. Each action rebuilds via a temporary sibling, then atomically replaces the original (Windows `MoveFileEx`). Cancel/error leaves the original intact.
+- **ZIP:** stream rebuild into a temporary sibling, then atomic replace (Windows `MoveFileEx`).
+- **TAR family + 7z:** extract to a temp work folder, apply the change, recreate the archive, replace the original. Needs free disk roughly the size of the unpacked tree.
+- **Single-stream GZIP/BZIP2/XZ:** no multi-entry edit.
+
+Cancel/error paths remove partial temps and leave the original intact when possible.
 
 | Action | Behavior |
 | --- | --- |

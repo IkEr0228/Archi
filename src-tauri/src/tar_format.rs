@@ -38,9 +38,10 @@ fn read_only_capabilities() -> ArchiveCapabilities {
         list: true,
         extract: true,
         create: false,
-        edit: false,
+        // Multi-entry TAR: integrity test yes; full ZIP-style edit via repack (see archive_edit).
+        edit: true,
         encrypt: false,
-        test: false,
+        test: true,
     }
 }
 

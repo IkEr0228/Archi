@@ -64,9 +64,9 @@ fn read_only_open_capabilities() -> ArchiveCapabilities {
         list: true,
         extract: true,
         create: false,
-        edit: false,
+        edit: true,
         encrypt: false,
-        test: false,
+        test: true,
     }
 }
 

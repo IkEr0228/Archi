@@ -32,7 +32,7 @@ fn read_only_capabilities() -> ArchiveCapabilities {
         create: false,
         edit: false,
         encrypt: false,
-        test: false,
+        test: true,
     }
 }
 
