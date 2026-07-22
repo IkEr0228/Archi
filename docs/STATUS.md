@@ -48,12 +48,12 @@ npm run tauri build
 Release Rust profile: `src-tauri/Cargo.toml` → `[profile.release]` (LTO, strip, opt-level 3, panic=abort).  
 Frontend: Vite production minify.
 
-**Last measured release build (2026-07-21):**
+**Last measured release build (2026-07-22, v0.2.0):**
 
 | Artifact | Path | Size |
 | --- | --- | --- |
-| EXE | `src-tauri/target/release/archi_backend.exe` | **5.78 MiB** (6 057 472 bytes) |
-| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.1.0_x64-setup.exe` | **1.81 MiB** (1 900 007 bytes) |
+| EXE | `src-tauri/target/release/archi_backend.exe` | **6.40 MiB** (6 715 392 bytes) |
+| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.2.0_x64-setup.exe` | **1.97 MiB** (2 067 809 bytes) |
 
 ## Performance notes (UI look unchanged)
 
