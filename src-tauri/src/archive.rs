@@ -4,6 +4,7 @@ use crate::gzip_format::open_gzip;
 use crate::models::{ArchiveCapabilities, ArchiveEntry, ArchiveInfo, ArchiveStats, CommandError};
 use crate::security::{assess_archive, validate_entry_path, ArchiveRiskInput};
 use crate::sevenz_format::open_sevenz;
+use sevenz_rust2::Password;
 use crate::tar_format::{open_tar, open_tar_bz2, open_tar_gz, open_tar_xz};
 use crate::xz_format::open_xz;
 use std::collections::{BTreeSet, HashMap};
@@ -29,7 +30,7 @@ pub fn open_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
         ArchiveFormat::Bzip2 => open_bzip2(path),
         ArchiveFormat::TarXz => open_tar_xz(path),
         ArchiveFormat::Xz => open_xz(path),
-        ArchiveFormat::SevenZ => open_sevenz(path),
+        ArchiveFormat::SevenZ => open_sevenz(path, Password::empty()),
     }
 }
 
@@ -40,12 +41,11 @@ fn zip_method_label(method: zip::CompressionMethod) -> String {
     match method {
         Stored => "Stored".into(),
         Deflated => "Deflated".into(),
+        Aes => "AES-256".into(),
         #[allow(deprecated)]
         Unsupported(12) => "Bzip2".into(),
         #[allow(deprecated)]
         Unsupported(93) => "Zstd".into(),
-        #[allow(deprecated)]
-        Unsupported(99) => "AES".into(),
         other => format!("{other:?}"),
     }
 }
@@ -201,7 +201,7 @@ fn open_zip_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
             extract: true,
             create: true,
             edit: true,
-            encrypt: false,
+            encrypt: true,
             test: true,
         },
         warnings: assess_archive(ArchiveRiskInput {

@@ -16,6 +16,7 @@ use crate::models::{
 use crate::operations::OperationRegistry;
 use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
+use sevenz_rust2::Password;
 use crate::tar_create::create_tar_archive;
 use crate::testing::test_archive;
 use crate::zipper::create_zip_archive;
@@ -196,6 +197,10 @@ pub async fn create_archive_command(
     let cancelled = state.cancelled.clone();
     let progress_app = app.clone();
     let worker_operation_id = operation_id.clone();
+    let password = match &options.password {
+        Some(pw) => Password::new(pw),
+        None => Password::empty(),
+    };
     let result = tauri::async_runtime::spawn_blocking(move || {
         let path = std::path::Path::new(&output_zip_path);
         let emit = move |progress| {
@@ -215,19 +220,38 @@ pub async fn create_archive_command(
             CreateFormat::Tar
             | CreateFormat::TarGz
             | CreateFormat::TarBz2
-            | CreateFormat::TarXz => create_tar_archive(
-                &source_paths,
-                path,
-                &worker_operation_id,
-                &cancelled,
-                &options,
-                emit,
-            ),
+            | CreateFormat::TarXz => {
+                if options.password.is_some() {
+                    create_sevenz_archive(
+                        &source_paths,
+                        path,
+                        &worker_operation_id,
+                        &cancelled,
+                        options
+                            .password
+                            .as_ref()
+                            .map(|s| Password::new(s.as_str()))
+                            .unwrap_or(Password::empty()),
+                        &options,
+                        emit,
+                    )
+                } else {
+                    create_tar_archive(
+                        &source_paths,
+                        path,
+                        &worker_operation_id,
+                        &cancelled,
+                        &options,
+                        emit,
+                    )
+                }
+            },
             CreateFormat::SevenZ => create_sevenz_archive(
                 &source_paths,
                 path,
                 &worker_operation_id,
                 &cancelled,
+                password,
                 &options,
                 emit,
             ),
