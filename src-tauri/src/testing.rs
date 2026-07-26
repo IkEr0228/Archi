@@ -119,16 +119,18 @@ fn test_zip(
             return Err(test_error("cancelled", "Archive test was cancelled."));
         }
         let mut entry = match password.as_deref() {
-            Some(pw) => archive.by_index_decrypt(index, pw.as_bytes()).map_err(|error| {
-                if matches!(error, zip::result::ZipError::InvalidPassword) {
-                    test_error(
-                        "password_required",
-                        "Invalid password provided. Please try again.",
-                    )
-                } else {
-                    test_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
-                }
-            })?,
+            Some(pw) => archive
+                .by_index_decrypt(index, pw.as_bytes())
+                .map_err(|error| {
+                    if matches!(error, zip::result::ZipError::InvalidPassword) {
+                        test_error(
+                            "password_required",
+                            "Invalid password provided. Please try again.",
+                        )
+                    } else {
+                        test_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
+                    }
+                })?,
             None => archive.by_index(index).map_err(|error| {
                 let lower = error.to_string().to_ascii_lowercase();
                 if lower.contains("password") || lower.contains("decrypt") {
@@ -434,7 +436,9 @@ fn test_sevenz(
 ) -> Result<TestArchiveSummary, CommandError> {
     use sevenz_rust2::{ArchiveReader, Password};
 
-    let pw = password.as_deref().map_or_else(Password::empty, Password::new);
+    let pw = password
+        .as_deref()
+        .map_or_else(Password::empty, Password::new);
     let mut reader = ArchiveReader::open(path, pw).map_err(|e| {
         let msg = e.to_string().to_ascii_lowercase();
         if msg.contains("password") || msg.contains("encrypt") {

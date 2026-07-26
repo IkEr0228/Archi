@@ -9,11 +9,11 @@ use crate::models::{
 };
 use crate::sevenz_edit;
 use crate::sevenz_format::create_sevenz_archive;
-use sevenz_rust2::Password;
 use crate::tar_create::create_tar_archive;
 use crate::tar_edit;
 use crate::zip_edit;
 use crate::zipper::create_zip_archive;
+use sevenz_rust2::Password;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -340,9 +340,15 @@ pub fn delete_entries(
         ArchiveFormat::Zip => {
             zip_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, options)
         }
-        ArchiveFormat::SevenZ => {
-            sevenz_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, password, options)
-        }
+        ArchiveFormat::SevenZ => sevenz_edit::delete_entries(
+            archive_path,
+            paths,
+            operation_id,
+            cancelled,
+            emit,
+            password,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2
@@ -559,9 +565,14 @@ pub fn compact_archive(
         ArchiveFormat::Zip => {
             zip_edit::compact_archive(archive_path, operation_id, cancelled, emit)
         }
-        ArchiveFormat::SevenZ => {
-            sevenz_edit::compact_archive(archive_path, operation_id, cancelled, emit, password, options)
-        }
+        ArchiveFormat::SevenZ => sevenz_edit::compact_archive(
+            archive_path,
+            operation_id,
+            cancelled,
+            emit,
+            password,
+            options,
+        ),
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
         | ArchiveFormat::TarBz2

@@ -16,10 +16,10 @@ use crate::models::{
 use crate::operations::OperationRegistry;
 use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
-use sevenz_rust2::Password;
 use crate::tar_create::create_tar_archive;
 use crate::testing::test_archive;
 use crate::zipper::create_zip_archive;
+use sevenz_rust2::Password;
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
@@ -86,10 +86,15 @@ pub fn get_startup_cli_path(state: State<'_, StartupCliPath>) -> Option<String> 
 }
 
 #[command]
-pub async fn open_archive_metadata(path: String, password: Option<String>) -> Result<ArchiveInfo, CommandError> {
-    tauri::async_runtime::spawn_blocking(move || open_archive(std::path::Path::new(&path), password))
-        .await
-        .map_err(|error| CommandError::new("worker_failed", error.to_string()))?
+pub async fn open_archive_metadata(
+    path: String,
+    password: Option<String>,
+) -> Result<ArchiveInfo, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        open_archive(std::path::Path::new(&path), password)
+    })
+    .await
+    .map_err(|error| CommandError::new("worker_failed", error.to_string()))?
 }
 
 #[command]
@@ -252,7 +257,7 @@ pub async fn create_archive_command(
                         emit,
                     )
                 }
-            },
+            }
             CreateFormat::SevenZ => create_sevenz_archive(
                 &source_paths,
                 path,

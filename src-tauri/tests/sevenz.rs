@@ -1,11 +1,11 @@
 mod common;
 
 use archi_backend_lib::archive::open_archive;
-use sevenz_rust2::Password;
 use archi_backend_lib::extraction::{extract_any, FailOnConflict};
 use archi_backend_lib::format_detect::{detect_format, ArchiveFormat};
 use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions};
 use archi_backend_lib::sevenz_format::create_sevenz_archive;
+use sevenz_rust2::Password;
 use std::fs;
 use std::sync::atomic::AtomicBool;
 
@@ -321,9 +321,6 @@ fn create_extract_sevenz_with_password_roundtrip() {
         |_| {},
     )
     .unwrap();
-    assert_eq!(
-        fs::read(dest.join("a.txt")).unwrap(),
-        b"super secret"
-    );
+    assert_eq!(fs::read(dest.join("a.txt")).unwrap(), b"super secret");
     fs::remove_dir_all(root).unwrap();
 }

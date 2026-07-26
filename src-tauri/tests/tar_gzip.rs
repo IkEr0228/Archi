@@ -425,7 +425,8 @@ fn zip_open_still_works() {
         use zip::ZipWriter;
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        zip.start_file("z.txt", SimpleFileOptions::default()).unwrap();
+        zip.start_file("z.txt", SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(b"zip").unwrap();
         zip.finish().unwrap();
     }

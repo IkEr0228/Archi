@@ -412,7 +412,8 @@ mod tests {
         let path = root.join("a.zip");
         let file = File::create(&path).unwrap();
         let mut zip = ZipWriter::new(file);
-        zip.start_file("a.txt", SimpleFileOptions::default()).unwrap();
+        zip.start_file("a.txt", SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(b"x").unwrap();
         zip.finish().unwrap();
 

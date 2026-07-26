@@ -422,25 +422,30 @@ fn extract_windows(
                         )
                     })?;
                 let mut entry = match password {
-                    Some(pw) => archive.by_index_decrypt(plan.index, pw.as_bytes()).map_err(|error| {
-                        let lower = error.to_string().to_ascii_lowercase();
-                        if matches!(error, zip::result::ZipError::InvalidPassword)
-                            || lower.contains("password")
-                            || lower.contains("decrypt")
-                        {
-                            extraction_error(
-                                "password_required",
-                                "Invalid password provided. Please try again.",
-                            )
-                        } else {
-                            extraction_error(
-                                "invalid_archive",
-                                format!("Cannot read ZIP entry: {error}"),
-                            )
-                        }
-                    })?,
+                    Some(pw) => archive
+                        .by_index_decrypt(plan.index, pw.as_bytes())
+                        .map_err(|error| {
+                            let lower = error.to_string().to_ascii_lowercase();
+                            if matches!(error, zip::result::ZipError::InvalidPassword)
+                                || lower.contains("password")
+                                || lower.contains("decrypt")
+                            {
+                                extraction_error(
+                                    "password_required",
+                                    "Invalid password provided. Please try again.",
+                                )
+                            } else {
+                                extraction_error(
+                                    "invalid_archive",
+                                    format!("Cannot read ZIP entry: {error}"),
+                                )
+                            }
+                        })?,
                     None => archive.by_index(plan.index).map_err(|error| {
-                        extraction_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
+                        extraction_error(
+                            "invalid_archive",
+                            format!("Cannot read ZIP entry: {error}"),
+                        )
                     })?,
                 };
                 let mut buffer = [0; BUFFER_SIZE];

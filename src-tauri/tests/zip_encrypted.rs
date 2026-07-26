@@ -143,8 +143,14 @@ fn test_encrypted_zip_password_flow() {
     let root = common::temp_dir("zip-aes-test");
     let out = create_encrypted_zip(&root, "hunter2");
 
-    let err = test_archive(&out, "zip-aes-test-nopass", &AtomicBool::new(false), None, |_| {})
-        .unwrap_err();
+    let err = test_archive(
+        &out,
+        "zip-aes-test-nopass",
+        &AtomicBool::new(false),
+        None,
+        |_| {},
+    )
+    .unwrap_err();
     assert_eq!(err.code, "password_required");
 
     let summary = test_archive(

@@ -14,7 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use zip::write::FileOptions;
 use zip::ZipWriter;
 
-fn zip_file_options<'a>(preset: CompressionPreset, password: Option<&'a str>) -> FileOptions<'a, ()> {
+fn zip_file_options<'a>(
+    preset: CompressionPreset,
+    password: Option<&'a str>,
+) -> FileOptions<'a, ()> {
     let opts = match preset {
         CompressionPreset::Store => {
             FileOptions::default().compression_method(zip::CompressionMethod::Stored)

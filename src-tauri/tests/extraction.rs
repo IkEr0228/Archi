@@ -161,8 +161,8 @@ fn extracts_when_nested_files_precede_directory_records() {
     fs::create_dir_all(&destination).unwrap();
     // Reverse order: files first, then directory record (still common in packs).
     let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
-    let options =
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     use std::io::Write;
     zip.start_file("models/hero.fbx", options).unwrap();
     zip.write_all(b"fbx").unwrap();

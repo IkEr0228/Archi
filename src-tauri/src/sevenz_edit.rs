@@ -157,7 +157,10 @@ fn require_sevenz_file(path: &Path) -> Result<(), CommandError> {
 }
 
 /// List physical members and whether the archive is solid.
-fn open_source_members(path: &Path, password: Option<&str>) -> Result<(bool, Vec<SourceMember>), CommandError> {
+fn open_source_members(
+    path: &Path,
+    password: Option<&str>,
+) -> Result<(bool, Vec<SourceMember>), CommandError> {
     let pw = password.map_or_else(Password::empty, Password::new);
     let reader = ArchiveReader::open(path, pw).map_err(map_sz_error)?;
     let is_solid = reader.archive().is_solid;
