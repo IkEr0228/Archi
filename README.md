@@ -6,15 +6,22 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 [![CI](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml/badge.svg)](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml)
 
+## Screenshots
+
+| Main window | Create archive (with password) | Password prompt |
+| --- | --- | --- |
+| ![Main window](screens/1.png) | ![Create archive](screens/2.png) | ![Password prompt](screens/3.png) |
+
 ## Features
 
 - **Multi-format open/list/extract:** ZIP, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
-- **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets
-- **Edit:** add, folder, rename, delete, replace, **in-archive move** (drag into folders / up to parent / Root)
+- **Encrypted archives:** open, extract, test, and create **AES-256** password-protected ZIP and 7z; password prompt with retry, session reuse for extract/test/edit
+- **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets; TAR family + password produces a real AES-256 `.7z`
+- **Edit:** add, folder, rename, delete, replace, **in-archive move** (drag into folders / up to parent / Root) — works on encrypted 7z too
 - **Fast edit paths:** ZIP append + logical delete; 7z non-solid **pack-copy** (no full Max recompress); TAR stream rebuild (no full work tree)
 - **Edit mode UI:** Auto / Fast / Compact + **Compact** rewrite action
 - **Explorer DnD:** drop files into an open archive folder, or drop an archive to open / sources to create
-- **Test:** all open formats — decompress/read integrity without writing user files
+- **Test:** all open formats — decompress/read integrity without writing user files (password-aware)
 - **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
 - **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes
 - **Conflicts:** overwrite / skip / rename / cancel (+ apply to all)
@@ -23,19 +30,26 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 ## Format support
 
-| Format | Open / list | Extract | Create | Test | Edit | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| **ZIP** | Yes | Yes | Yes | Yes | Yes | Stored + Deflate. Edit: append add, logical/fast delete, stream rebuild rename/move. |
-| **7z** | Yes | Yes | Yes | Yes | Yes | LZMA/LZMA2; encrypted with password (remember on session). Edit: non-solid pack-copy (fallback stream rebuild / solid repack). |
-| **TAR** | Yes | Yes | Yes | Yes | Yes | Create = store. Edit = stream rebuild. |
-| **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
-| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
-| **TAR.XZ / TXZ** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
-| **GZIP** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
-| **BZIP2** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
-| **XZ** (single) | Yes | Yes | No | Yes | No | Integrity stream test only. |
+| Format | Open / list | Extract | Create | Test | Edit | Encryption | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **ZIP** | Yes | Yes | Yes | Yes | Yes | AES-256 | Stored + Deflate. Encrypted listing works without password; extract/test prompt. Edit: append add, logical/fast delete, stream rebuild rename/move. |
+| **7z** | Yes | Yes | Yes | Yes | Yes | AES-256 | LZMA/LZMA2. Password prompt on open when headers are encrypted. Edit: non-solid pack-copy (fallback stream rebuild / solid repack), encryption preserved. |
+| **TAR** | Yes | Yes | Yes | Yes | Yes | via .7z | Create = store. Edit = stream rebuild. Password request creates AES-256 7z instead. |
+| **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
+| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
+| **TAR.XZ / TXZ** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
+| **GZIP** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
+| **BZIP2** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
+| **XZ** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
 
 Capability flags from the backend drive the UI: unavailable actions stay disabled.
+
+## Password-protected archives
+
+- **Open/list:** encrypted 7z prompts immediately (headers are encrypted); encrypted ZIP lists entries (central directory is plaintext) and flags a warning.
+- **Extract / test:** password prompt with **invalid password → try again**; a correct password is reused for the session (extract, test, edit).
+- **Create:** optional password field in the Create dialog — AES-256 for ZIP and 7z. For TAR-family formats there is no native encryption, so Archi warns and writes a real `.7z`.
+- **Edit on encrypted 7z:** add/rename/delete/move/replace/compact keep the archive encrypted with the same password.
 
 ## Safety highlights
 
@@ -67,8 +81,8 @@ Release artifacts (after `npm run tauri build`):
 
 | Artifact | Typical path |
 | --- | --- |
-| EXE | `src-tauri/target/release/archi_backend.exe` |
-| Installer | `src-tauri/target/release/bundle/nsis/archi_0.2.0_x64-setup.exe` |
+| Portable EXE | `src-tauri/target/release/archi_backend.exe` (renamed to `archi.exe` in releases) |
+| Installer | `src-tauri/target/release/bundle/nsis/archi_0.2.1_x64-setup.exe` |
 
 ## Development checks
 
@@ -145,9 +159,8 @@ Toolbar **Associations** registers Archi under **HKCU** only (not machine-wide, 
 
 - ZIP methods beyond Stored/Deflate are not decompressed
 - ZIP edit rewrites the whole archive per operation
-- No archive repair, multi-volume, or drag-into-open-archive yet
-- ZIP edit rewrites the whole archive per operation
-- No archive repair, multi-volume, or drag-into-open-archive yet
+- No RAR support (proprietary format), no archive repair or multi-volume
+- TAR-family formats have no native encryption — password-protected create falls back to 7z
 - Secure extract path is Windows-focused
 
 ## Documentation map
