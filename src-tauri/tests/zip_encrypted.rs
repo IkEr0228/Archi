@@ -139,6 +139,54 @@ fn extract_encrypted_zip_with_password_round_trips() {
 }
 
 #[test]
+fn extract_mixed_zip_with_password_decrypts_only_encrypted() {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    use zip::{AesMode, ZipWriter};
+
+    let root = common::temp_dir("zip-aes-mixed");
+    let out = root.join("mixed.zip");
+    {
+        let mut zip = ZipWriter::new(fs::File::create(&out).unwrap());
+        let plain = SimpleFileOptions::default();
+        let encrypted =
+            SimpleFileOptions::default().with_aes_encryption(AesMode::Aes256, "hunter2");
+        zip.start_file("plain.txt", plain).unwrap();
+        zip.write_all(b"plain data").unwrap();
+        zip.start_file("secret.txt", encrypted).unwrap();
+        zip.write_all(b"super secret").unwrap();
+        zip.finish().unwrap();
+    }
+
+    let dest = root.join("out");
+    fs::create_dir(&dest).unwrap();
+    extract_any(
+        &out,
+        &dest,
+        "zip-aes-mixed-ex",
+        &AtomicBool::new(false),
+        None,
+        Some("hunter2".into()),
+        &FailOnConflict,
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(dest.join("plain.txt")).unwrap(), b"plain data");
+    assert_eq!(fs::read(dest.join("secret.txt")).unwrap(), b"super secret");
+
+    let summary = test_archive(
+        &out,
+        "zip-aes-mixed-test",
+        &AtomicBool::new(false),
+        Some("hunter2".into()),
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(summary.tested_failed, 0);
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn test_encrypted_zip_password_flow() {
     let root = common::temp_dir("zip-aes-test");
     let out = create_encrypted_zip(&root, "hunter2");

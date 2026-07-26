@@ -421,7 +421,13 @@ fn extract_windows(
                             format!("Cannot securely create temporary file: {error}"),
                         )
                     })?;
-                let mut entry = match password {
+                // zip 2.x rejects by_index_decrypt on non-encrypted entries even
+                // with a correct password (InvalidPassword) — decrypt only encrypted ones.
+                let entry_encrypted = archive
+                    .by_index_raw(plan.index)
+                    .map(|e| e.encrypted())
+                    .unwrap_or(false);
+                let mut entry = match password.filter(|_| entry_encrypted) {
                     Some(pw) => archive
                         .by_index_decrypt(plan.index, pw.as_bytes())
                         .map_err(|error| {

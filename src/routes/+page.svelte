@@ -640,6 +640,8 @@
 
   async function handleTestArchive(password?: string) {
     if (!canTest || activeOperation) return;
+    // Toolbar onclick passes MouseEvent — treat non-string as no password.
+    const pw = typeof password === 'string' ? password : undefined;
     let operationId: string | null = null;
     try {
       operationId = crypto.randomUUID();
@@ -653,11 +655,11 @@
       const summary = await invoke<TestArchiveSummary>('test_archive_command', {
         operationId,
         zipPath: currentArchivePath,
-        password: password ?? archivePassword
+        password: pw ?? archivePassword
       });
       if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
-      if (password) {
-        archivePassword = password;
+      if (pw) {
+        archivePassword = pw;
       }
 
       if (summary.tested_failed === 0) {
@@ -674,8 +676,8 @@
       if (invokeErrorCode(e) === 'password_required') {
         askPassword({
           purpose: 'test',
-          title: password ? 'Invalid password — try again' : 'Archive is password-protected'
-        }, !!password);
+          title: pw ? 'Invalid password — try again' : 'Archive is password-protected'
+        }, !!pw);
         return;
       }
       errorMessage = `Archive test failed: ${formatInvokeError(e)}`;

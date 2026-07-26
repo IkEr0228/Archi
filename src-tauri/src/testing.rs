@@ -118,7 +118,13 @@ fn test_zip(
         if cancelled.load(Ordering::Relaxed) {
             return Err(test_error("cancelled", "Archive test was cancelled."));
         }
-        let mut entry = match password.as_deref() {
+        // zip 2.x rejects by_index_decrypt on non-encrypted entries even with a
+        // correct password (InvalidPassword) — decrypt only encrypted ones.
+        let entry_encrypted = archive
+            .by_index_raw(index)
+            .map(|e| e.encrypted())
+            .unwrap_or(false);
+        let mut entry = match password.as_deref().filter(|_| entry_encrypted) {
             Some(pw) => archive
                 .by_index_decrypt(index, pw.as_bytes())
                 .map_err(|error| {
