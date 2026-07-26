@@ -21,6 +21,7 @@ fn create_options(format: CreateFormat) -> CreateOptions {
         compression: CompressionPreset::Fast,
         include_root: false,
         overwrite: false,
+        password: None,
     }
 }
 
@@ -46,7 +47,7 @@ fn create_sample_tar(root: &Path, format: CreateFormat, ext: &str) -> PathBuf {
 }
 
 fn entry_names(archive: &Path) -> Vec<String> {
-    let info = open_archive(archive).unwrap();
+    let info = open_archive(archive, None).unwrap();
     let mut names: Vec<String> = info
         .entries
         .iter()
@@ -73,6 +74,7 @@ fn entry_bytes_via_extract(archive: &Path, member: &str) -> Vec<u8> {
         "ex-check",
         &AtomicBool::new(false),
         Some(&[member.to_string()]),
+        None,
         &FailOnConflict,
         |_| {},
     )

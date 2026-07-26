@@ -6,6 +6,7 @@ use archi_backend_lib::sevenz_edit::{
     add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
 };
 use archi_backend_lib::sevenz_format::create_sevenz_archive;
+use sevenz_rust2::Password;
 use std::cell::Cell;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,7 @@ fn fast_create_options() -> CreateOptions {
         compression: CompressionPreset::Fast,
         include_root: false,
         overwrite: false,
+        password: None,
     }
 }
 
@@ -38,6 +40,7 @@ fn create_sample_7z(root: &Path) -> PathBuf {
         &out,
         "7z-edit-create",
         &AtomicBool::new(false),
+        Password::empty(),
         &fast_create_options(),
         |_| {},
     )
@@ -46,7 +49,7 @@ fn create_sample_7z(root: &Path) -> PathBuf {
 }
 
 fn entry_names(archive: &Path) -> Vec<String> {
-    let info = open_archive(archive).unwrap();
+    let info = open_archive(archive, None).unwrap();
     let mut names: Vec<String> = info
         .entries
         .iter()
@@ -73,6 +76,7 @@ fn entry_bytes_via_extract(archive: &Path, member: &str) -> Vec<u8> {
         "ex-check",
         &AtomicBool::new(false),
         Some(&[member.to_string()]),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -115,6 +119,7 @@ fn delete_file_removes_entry_pack_copy() {
         "7z-edit-delete-1",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();
@@ -145,6 +150,7 @@ fn rename_file_changes_path_and_preserves_content() {
         "7z-edit-rename-1",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();
@@ -174,6 +180,7 @@ fn move_entries_relocates_leaf() {
         "7z-edit-move-1",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();
@@ -201,6 +208,7 @@ fn create_folder_adds_directory() {
         "7z-edit-mkdir-1",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();
@@ -227,6 +235,7 @@ fn add_file_into_parent() {
         "7z-edit-add-1",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();
@@ -260,6 +269,7 @@ fn replace_file_updates_content() {
         "7z-edit-replace-1",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();
@@ -297,6 +307,7 @@ fn cancel_delete_preserves_original_and_removes_temp() {
                 cancelled.store(true, Ordering::Relaxed);
             }
         },
+        None,
         &default_edit_options(),
     )
     .unwrap_err();
@@ -322,6 +333,7 @@ fn delete_directory_prefix_removes_children() {
         "7z-edit-delete-dir",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &default_edit_options(),
     )
     .unwrap();

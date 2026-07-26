@@ -405,14 +405,14 @@ mod tests {
 
     #[test]
     fn detects_zip_local_header() {
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
 
         let root = temp_dir("zip");
         let path = root.join("a.zip");
         let file = File::create(&path).unwrap();
         let mut zip = ZipWriter::new(file);
-        zip.start_file("a.txt", FileOptions::default()).unwrap();
+        zip.start_file("a.txt", SimpleFileOptions::default()).unwrap();
         zip.write_all(b"x").unwrap();
         zip.finish().unwrap();
 

@@ -2,7 +2,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 pub fn temp_dir(label: &str) -> PathBuf {
@@ -18,7 +18,7 @@ pub fn temp_dir(label: &str) -> PathBuf {
 #[allow(dead_code)]
 pub fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
     let mut zip = ZipWriter::new(File::create(path).unwrap());
-    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     for (name, bytes) in entries {
         zip.start_file(*name, options).unwrap();
         zip.write_all(bytes).unwrap();
@@ -30,7 +30,7 @@ pub fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
 #[allow(dead_code)]
 pub fn write_zip_with_dirs(path: &Path, directories: &[&str], files: &[(&str, &[u8])]) {
     let mut zip = ZipWriter::new(File::create(path).unwrap());
-    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     for dir in directories {
         zip.add_directory(*dir, options).unwrap();
     }

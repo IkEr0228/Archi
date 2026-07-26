@@ -10,7 +10,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::io_perf::{ProgressGate, IO_BUFFER_SIZE as BUFFER_SIZE};
@@ -715,8 +715,8 @@ fn open_source_file(path: &Path) -> io::Result<File> {
     File::open(path)
 }
 
-fn deflated_file_options() -> FileOptions {
-    FileOptions::default().compression_method(CompressionMethod::Deflated)
+fn deflated_file_options() -> SimpleFileOptions {
+    SimpleFileOptions::default().compression_method(CompressionMethod::Deflated)
 }
 
 fn enumerate_add_directory(
@@ -1099,7 +1099,7 @@ fn rebuild_archive(
                     let out_name = zip_output_name(out_path, *is_dir);
 
                     if entry.is_dir() || *is_dir {
-                        let options = FileOptions::default();
+                        let options = SimpleFileOptions::default();
                         zip.add_directory(&out_name, options).map_err(|error| {
                             edit_error(
                                 "write_failed",
@@ -1117,7 +1117,7 @@ fn rebuild_archive(
                 }
                 RebuildMember::NewDirectory { path } => {
                     let out_name = zip_output_name(path, true);
-                    zip.add_directory(&out_name, FileOptions::default())
+                    zip.add_directory(&out_name, SimpleFileOptions::default())
                         .map_err(|error| {
                             edit_error(
                                 "write_failed",
@@ -1251,7 +1251,7 @@ fn append_to_archive(
             match member {
                 RebuildMember::NewDirectory { path } => {
                     let out_name = zip_output_name(path, true);
-                    zip.add_directory(&out_name, FileOptions::default())
+                    zip.add_directory(&out_name, SimpleFileOptions::default())
                         .map_err(|error| {
                             edit_error(
                                 "write_failed",

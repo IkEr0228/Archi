@@ -36,6 +36,7 @@ fn cancelled_extraction_removes_partial_file() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &FailOnConflict,
         |_| {},
     );
@@ -70,6 +71,7 @@ fn conflicting_destination_starts_no_partial_extraction() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &FailOnConflict,
         |_| {},
     );
@@ -96,6 +98,7 @@ fn non_directory_parent_fails_before_extraction() {
         &destination,
         "extract-1",
         &cancelled,
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -131,6 +134,7 @@ fn extracts_when_zip_lists_directory_then_nested_files() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -158,7 +162,7 @@ fn extracts_when_nested_files_precede_directory_records() {
     // Reverse order: files first, then directory record (still common in packs).
     let mut zip = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
     let options =
-        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     use std::io::Write;
     zip.start_file("models/hero.fbx", options).unwrap();
     zip.write_all(b"fbx").unwrap();
@@ -171,6 +175,7 @@ fn extracts_when_nested_files_precede_directory_records() {
         &destination,
         "extract-1",
         &cancelled,
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -201,6 +206,7 @@ fn extracts_a_file_with_the_secure_write_path() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -230,6 +236,7 @@ fn extracts_only_selected_file() {
         "extract-1",
         &cancelled,
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -262,6 +269,7 @@ fn extracts_selected_directory_recursively() {
         "extract-1",
         &cancelled,
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -294,6 +302,7 @@ fn empty_selection_vector_errors() {
         "extract-1",
         &cancelled,
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -317,6 +326,7 @@ fn unknown_selection_errors() {
         "extract-1",
         &cancelled,
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -341,6 +351,7 @@ fn overwrite_replaces_existing_file() {
         &destination,
         "extract-1",
         &cancelled,
+        None,
         None,
         &resolver,
         |_| {},
@@ -374,6 +385,7 @@ fn skip_keeps_existing_and_extracts_other() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &resolver,
         |_| {},
     )
@@ -403,6 +415,7 @@ fn rename_writes_numbered_file() {
         &destination,
         "extract-1",
         &cancelled,
+        None,
         None,
         &resolver,
         |_| {},
@@ -449,6 +462,7 @@ fn symlink_destination_hard_fails_without_overwrite() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &resolver,
         |_| {},
     )
@@ -491,6 +505,7 @@ fn apply_policy_simulated_by_two_skips_in_script() {
         "extract-1",
         &cancelled,
         None,
+        None,
         &resolver,
         |_| {},
     )
@@ -526,6 +541,7 @@ fn cancel_from_conflict_cleans_partials() {
         &destination,
         "extract-cancel-conflict",
         &cancelled,
+        None,
         None,
         &resolver,
         |_| {},
@@ -638,6 +654,7 @@ fn apply_to_all_skip_via_registry_policy() {
         &destination,
         &op_id,
         &cancelled,
+        None,
         None,
         &resolver,
         |_| {},

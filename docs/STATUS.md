@@ -15,7 +15,7 @@
 | **Phase 3** | Formats, ZIP edit, CLI, multi-format create | **Done** |
 | **Phase 3.5** | File associations / Explorer (opt-in) | **Done** |
 | **Phase 4** | Incremental edit (ZIP append/logical delete, 7z pack-copy, TAR stream), in-archive DnD, Edit mode UI | **Done (v0.2.0)** |
-| **Later** | RAR (read only if licensed), passwords UI, encrypted 7z, ZPAQ | Deferred |
+| **Done** | Encrypted 7z / passwords UI (remember on session) | Done |
 
 ## What works today
 
@@ -25,7 +25,7 @@
 - **Edit mode:** Auto / Fast / Compact toolbar control + Compact archive action.
 - **CLI:** `archi.exe path\to\archive`; single-instance forwards a second launch to the first process.
 - **File associations:** opt-in per-user (HKCU) via toolbar **Associations**.
-- **Not enabled:** encrypted 7z, RAR, passwords UI, single-stream create, ZPAQ.
+- **Not enabled:** RAR, single-stream create, ZPAQ.
 
 ## Docs map
 
@@ -102,8 +102,7 @@ Acrylic / fonts / transparent window are preserved. Runtime work targets backend
 
 ## Possible next work
 
-1. Encrypted 7z / passwords UI  
-2. Solid 7z packing (trade-offs with cancel)  
-3. Single-stream gz/bz2/xz create  
-4. RAR read (licensing) / ZPAQ  
+1. Solid 7z packing (trade-offs with cancel)  
+2. Single-stream gz/bz2/xz create  
+3. RAR read (licensing) / ZPAQ  
 

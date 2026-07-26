@@ -86,8 +86,8 @@ pub fn get_startup_cli_path(state: State<'_, StartupCliPath>) -> Option<String> 
 }
 
 #[command]
-pub async fn open_archive_metadata(path: String) -> Result<ArchiveInfo, CommandError> {
-    tauri::async_runtime::spawn_blocking(move || open_archive(std::path::Path::new(&path)))
+pub async fn open_archive_metadata(path: String, password: Option<String>) -> Result<ArchiveInfo, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || open_archive(std::path::Path::new(&path), password))
         .await
         .map_err(|error| CommandError::new("worker_failed", error.to_string()))?
 }
@@ -98,6 +98,7 @@ pub async fn test_archive_command(
     registry: State<'_, OperationRegistry>,
     operation_id: String,
     zip_path: String,
+    password: Option<String>,
 ) -> Result<TestArchiveSummary, CommandError> {
     let state = registry
         .start(&operation_id)
@@ -110,6 +111,7 @@ pub async fn test_archive_command(
             std::path::Path::new(&zip_path),
             &worker_operation_id,
             &cancelled,
+            password,
             move |progress| {
                 if let Err(error) = progress_app.emit("test-progress", progress) {
                     eprintln!("Failed to emit test-progress: {error}");
@@ -130,6 +132,7 @@ pub async fn extract_archive_command(
     zip_path: String,
     dest_dir: String,
     selected_paths: Option<Vec<String>>,
+    password: Option<String>,
 ) -> Result<crate::models::OperationSummary, CommandError> {
     let state = registry
         .start(&operation_id)
@@ -151,6 +154,7 @@ pub async fn extract_archive_command(
             &worker_operation_id,
             &cancelled,
             selected_ref,
+            password,
             &resolver,
             move |progress| {
                 if let Err(error) = progress_app.emit("extract-progress", progress) {
@@ -222,16 +226,19 @@ pub async fn create_archive_command(
             | CreateFormat::TarBz2
             | CreateFormat::TarXz => {
                 if options.password.is_some() {
+                    // TAR-family formats have no native encryption: write a real
+                    // AES-256 7z and fix the output extension to match the bytes.
+                    let adjusted_path = path.with_extension("7z");
                     create_sevenz_archive(
                         &source_paths,
-                        path,
+                        &adjusted_path,
                         &worker_operation_id,
                         &cancelled,
                         options
                             .password
                             .as_ref()
                             .map(|s| Password::new(s.as_str()))
-                            .unwrap_or(Password::empty()),
+                            .unwrap_or_else(Password::empty),
                         &options,
                         emit,
                     )
@@ -291,6 +298,7 @@ pub async fn delete_archive_entries_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })
@@ -324,6 +332,7 @@ pub async fn rename_archive_entry_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })
@@ -355,6 +364,7 @@ pub async fn create_archive_folder_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })
@@ -388,6 +398,7 @@ pub async fn add_to_archive_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })
@@ -421,6 +432,7 @@ pub async fn replace_archive_file_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })
@@ -455,6 +467,7 @@ pub async fn move_archive_entries_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })
@@ -485,6 +498,7 @@ pub async fn compact_archive_command(
             &worker_operation_id,
             &cancelled,
             move |progress| emit_edit_progress(&progress_app, progress),
+            edit_options.password.clone(),
             &edit_options,
         )
     })

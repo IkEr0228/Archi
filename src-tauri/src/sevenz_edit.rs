@@ -16,7 +16,7 @@ use crate::sevenz_format::create_sevenz_archive;
 use crate::sevenz_pack_copy::{
     assess_pack_copy_eligibility, pack_stream_rebuild, PackStreamMember,
 };
-use sevenz_rust2::encoder_options::Lzma2Options;
+use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -76,25 +76,21 @@ fn cancelled_error() -> CommandError {
 }
 
 fn map_sz_error(error: sevenz_rust2::Error) -> CommandError {
-    use sevenz_rust2::Error as E;
     match &error {
-        E::PasswordRequired | E::MaybeBadPassword(_) => edit_error(
-            "password_required",
-            "Encrypted 7z archives are not supported yet. Open an unencrypted archive.",
-        ),
         _ => {
             let message = error.to_string();
             let lower = message.to_ascii_lowercase();
             if lower.contains("password") || lower.contains("encrypt") {
-                return edit_error(
+                edit_error(
                     "password_required",
-                    "Encrypted 7z archives are not supported yet. Open an unencrypted archive.",
-                );
+                    "Invalid password provided. Please try again.",
+                )
+            } else {
+                if lower.contains("cancelled") {
+                    return cancelled_error();
+                }
+                edit_error("invalid_archive", format!("7z error: {message}"))
             }
-            if lower.contains("cancelled") {
-                return cancelled_error();
-            }
-            edit_error("invalid_archive", format!("7z error: {message}"))
         }
     }
 }
@@ -161,8 +157,9 @@ fn require_sevenz_file(path: &Path) -> Result<(), CommandError> {
 }
 
 /// List physical members and whether the archive is solid.
-fn open_source_members(path: &Path) -> Result<(bool, Vec<SourceMember>), CommandError> {
-    let reader = ArchiveReader::open(path, Password::empty()).map_err(map_sz_error)?;
+fn open_source_members(path: &Path, password: Option<&str>) -> Result<(bool, Vec<SourceMember>), CommandError> {
+    let pw = password.map_or_else(Password::empty, Password::new);
+    let reader = ArchiveReader::open(path, pw).map_err(map_sz_error)?;
     let is_solid = reader.archive().is_solid;
     let mut members = Vec::with_capacity(reader.archive().files.len());
     for file in &reader.archive().files {
@@ -879,6 +876,7 @@ fn stream_rebuild(
     operation_id: &str,
     cancelled: &AtomicBool,
     compression: CompressionPreset,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<EditSummary, CommandError> {
     if operation_id.is_empty() {
@@ -915,14 +913,24 @@ fn stream_rebuild(
 
     let result = (|| -> Result<EditSummary, CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
-        writer.set_content_methods(vec![Lzma2Options::from_level(level).into()]);
+        let methods = match password {
+            Some(pw) => vec![
+                AesEncoderOptions::new(Password::new(pw)).into(),
+                Lzma2Options::from_level(level).into(),
+            ],
+            None => vec![Lzma2Options::from_level(level).into()],
+        };
+        writer.set_content_methods(methods);
 
         let mut processed = 0_u64;
         let mut progress_gate = ProgressGate::new();
         let mut kept_written: HashSet<String> = HashSet::new();
 
-        let mut reader =
-            ArchiveReader::open(archive_path, Password::empty()).map_err(map_sz_error)?;
+        let mut reader = ArchiveReader::open(
+            archive_path,
+            password.map_or_else(Password::empty, Password::new),
+        )
+        .map_err(map_sz_error)?;
 
         let for_each_result = reader.for_each_entries(|entry, data| {
             if cancelled.load(Ordering::Relaxed) {
@@ -1232,6 +1240,7 @@ fn repack_edit(
     operation_id: &str,
     cancelled: &AtomicBool,
     mut emit: impl FnMut(OperationProgress),
+    password: Option<&str>,
     options: &EditOptions,
     mutate: impl FnOnce(&Path) -> Result<(), CommandError>,
 ) -> Result<EditSummary, CommandError> {
@@ -1244,8 +1253,9 @@ fn repack_edit(
             operation_id,
             cancelled,
             None,
+            password.map(str::to_owned),
             &FailOnConflict,
-            |mut p| {
+            |mut p: OperationProgress| {
                 p.phase = Some("repack".into());
                 emit(p);
             },
@@ -1263,13 +1273,19 @@ fn repack_edit(
             compression,
             include_root: false,
             overwrite: true,
+            password: password.map(str::to_owned),
         };
         let sources = vec![work.to_string_lossy().into_owned()];
+        let password = match &create_options.password {
+            Some(pw) => Password::new(pw.as_str()),
+            None => Password::empty(),
+        };
         let summary = create_sevenz_archive(
             &sources,
             archive_path,
             operation_id,
             cancelled,
+            password,
             &create_options,
             |mut p| {
                 p.phase = Some("repack".into());
@@ -1332,9 +1348,11 @@ fn apply_nonsolid_planned(
     operation_id: &str,
     cancelled: &AtomicBool,
     compression: CompressionPreset,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<EditSummary, CommandError> {
-    let pack_eligible = match ArchiveReader::open(archive_path, Password::empty()) {
+    let pw = password.map_or_else(Password::empty, Password::new);
+    let pack_eligible = match ArchiveReader::open(archive_path, pw) {
         Ok(reader) => assess_pack_copy_eligibility(reader.archive()).is_ok(),
         Err(_) => false,
     };
@@ -1365,6 +1383,7 @@ fn apply_nonsolid_planned(
         operation_id,
         cancelled,
         compression,
+        password,
         emit,
     )
 }
@@ -1376,6 +1395,7 @@ fn apply_planned(
     planned: Vec<RebuildMember>,
     operation_id: &str,
     cancelled: &AtomicBool,
+    password: Option<String>,
     options: &EditOptions,
     emit: impl FnMut(OperationProgress),
     solid_mutate: impl FnOnce(&Path) -> Result<(), CommandError>,
@@ -1386,6 +1406,7 @@ fn apply_planned(
             operation_id,
             cancelled,
             emit,
+            password.as_deref(),
             options,
             solid_mutate,
         )
@@ -1397,6 +1418,7 @@ fn apply_planned(
             operation_id,
             cancelled,
             edit_compression(options),
+            password.as_deref(),
             emit,
         )
     }
@@ -1411,10 +1433,11 @@ pub fn delete_entries(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned = plan_delete(&members, paths)?;
     let paths = paths.to_vec();
     apply_planned(
@@ -1424,6 +1447,7 @@ pub fn delete_entries(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         move |work| apply_deletes(work, &paths),
@@ -1438,10 +1462,11 @@ pub fn rename_entry(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned = plan_rename(&members, from, to)?;
     let from = from.to_string();
     let to = to.to_string();
@@ -1452,6 +1477,7 @@ pub fn rename_entry(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         move |work| apply_rename(work, &from, &to),
@@ -1466,10 +1492,11 @@ pub fn move_entries(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned = plan_move(&members, sources, dest_folder)?;
     let sources = sources.to_vec();
     let dest_folder = dest_folder.to_string();
@@ -1480,6 +1507,7 @@ pub fn move_entries(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         move |work| {
@@ -1534,10 +1562,11 @@ pub fn create_folder(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned = plan_create_folder(&members, folder_path)?;
     let folder_path = folder_path.to_string();
     apply_planned(
@@ -1547,6 +1576,7 @@ pub fn create_folder(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         move |work| apply_mkdir(work, &folder_path),
@@ -1561,10 +1591,11 @@ pub fn add_paths(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned = plan_add_paths(
         &members,
         source_paths,
@@ -1581,6 +1612,7 @@ pub fn add_paths(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         move |work| apply_add(work, &archive_parent, &source_paths),
@@ -1593,10 +1625,11 @@ pub fn compact_archive(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned: Vec<RebuildMember> = members
         .iter()
         .enumerate()
@@ -1613,6 +1646,7 @@ pub fn compact_archive(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         |_work| Ok(()),
@@ -1629,10 +1663,11 @@ pub fn replace_file(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     require_sevenz_file(archive_path)?;
-    let (is_solid, members) = open_source_members(archive_path)?;
+    let (is_solid, members) = open_source_members(archive_path, password.as_deref())?;
     let planned = plan_replace_file(&members, entry_path, source_file)?;
     let entry_path = entry_path.to_string();
     let source_file = source_file.to_path_buf();
@@ -1643,6 +1678,7 @@ pub fn replace_file(
         planned,
         operation_id,
         cancelled,
+        password,
         options,
         emit,
         move |work| apply_replace(work, &entry_path, &source_file),

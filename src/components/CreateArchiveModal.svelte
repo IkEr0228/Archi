@@ -9,6 +9,7 @@
     includeRoot = true,
     overwrite = false,
     outputPath = "",
+    password = $bindable(""),
     busy = false,
     onFormat,
     onCompression,
@@ -24,6 +25,7 @@
     includeRoot: boolean;
     overwrite: boolean;
     outputPath: string;
+    password?: string;
     busy?: boolean;
     onFormat: (v: CreateFormat) => void;
     onCompression: (v: Compression) => void;
@@ -41,6 +43,10 @@
   const usesCodecLevels = $derived(
     format === "tarGz" || format === "tarBz2" || format === "tarXz" || format === "sevenZ"
   );
+  const isTarFamily = $derived(
+    format === "tar" || format === "tarGz" || format === "tarBz2" || format === "tarXz"
+  );
+  const supportsEncryption = $derived(format === "zip" || format === "sevenZ");
 </script>
 
 <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
@@ -118,11 +124,27 @@
         <p class="create-hint">Plain TAR stores files without compression.</p>
       {:else if format === "sevenZ"}
         <p class="create-hint">
-          7z uses LZMA2. Prefer Max (level 9) for smallest archives; slower than ZIP/TAR.GZ. Encrypted 7z not supported yet.
+          7z uses LZMA2. Prefer Max (level 9) for smallest archives; slower than ZIP/TAR.GZ. Supports AES-256 encryption.
         </p>
       {:else if usesCodecLevels}
         <p class="create-hint">
           Levels map to the codec (1 / 6 / 9). Best size among tar family: TAR.XZ Max; 7z Max is usually smallest overall. Already-compressed media barely shrinks.
+        </p>
+      {/if}
+      <div class="create-field">
+        <label class="create-label" for="create-password">Password</label>
+        <input
+          id="create-password"
+          type="password"
+          class="create-input"
+          bind:value={password}
+          placeholder={supportsEncryption ? "Optional — AES-256 encrypt" : "Optional — archive becomes .7z"}
+          disabled={busy}
+        />
+      </div>
+      {#if password.trim() && isTarFamily}
+        <p class="create-hint create-warn">
+          TAR formats have no native encryption — an AES-256 .7z archive will be created instead.
         </p>
       {/if}
       <label class="create-check">

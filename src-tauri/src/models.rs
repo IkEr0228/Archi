@@ -91,6 +91,8 @@ pub struct CreateOptions {
     pub compression: CompressionPreset,
     pub include_root: bool,
     pub overwrite: bool,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 /// Preference for how archive edits are applied (append/fast vs compact rebuild).
@@ -111,6 +113,8 @@ pub struct EditOptions {
     pub compression: Option<CompressionPreset>,
     #[serde(default)]
     pub strategy: Option<EditStrategyPref>,
+    #[serde(default)]
+    pub password: Option<String>,
 }
 
 impl CreateOptions {
@@ -120,6 +124,7 @@ impl CreateOptions {
             compression: CompressionPreset::Normal,
             include_root: true,
             overwrite: false,
+            password: None,
         }
     }
 }

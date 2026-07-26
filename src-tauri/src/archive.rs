@@ -13,7 +13,7 @@ use std::path::Path;
 use zip::ZipArchive;
 
 /// Opens an archive (zip / tar / compressed tar / single-stream) and returns listing metadata.
-pub fn open_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
+pub fn open_archive(path: &Path, password: Option<String>) -> Result<ArchiveInfo, CommandError> {
     if !path.is_file() {
         return Err(CommandError::new(
             "not_found",
@@ -22,7 +22,7 @@ pub fn open_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
     }
 
     match detect_format(path)? {
-        ArchiveFormat::Zip => open_zip_archive(path),
+        ArchiveFormat::Zip => open_zip_archive(path, password.as_deref()),
         ArchiveFormat::Tar => open_tar(path),
         ArchiveFormat::TarGz => open_tar_gz(path),
         ArchiveFormat::Gzip => open_gzip(path),
@@ -30,7 +30,13 @@ pub fn open_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
         ArchiveFormat::Bzip2 => open_bzip2(path),
         ArchiveFormat::TarXz => open_tar_xz(path),
         ArchiveFormat::Xz => open_xz(path),
-        ArchiveFormat::SevenZ => open_sevenz(path, Password::empty()),
+        ArchiveFormat::SevenZ => {
+            let password = match password {
+                Some(pw) => Password::new(&pw),
+                None => Password::empty(),
+            };
+            open_sevenz(path, password)
+        }
     }
 }
 
@@ -50,7 +56,7 @@ fn zip_method_label(method: zip::CompressionMethod) -> String {
     }
 }
 
-fn open_zip_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
+fn open_zip_archive(path: &Path, _password: Option<&str>) -> Result<ArchiveInfo, CommandError> {
     let file = File::open(path).map_err(|error| {
         CommandError::new("invalid_archive", format!("Failed to open file: {error}"))
     })?;
@@ -70,14 +76,20 @@ fn open_zip_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
     let mut total_compressed: u64 = 0;
     let mut largest_entry: u64 = 0;
     let mut deepest_path = 0;
+    let mut has_encrypted = false;
 
     for i in 0..zip_len {
-        let file = zip.by_index(i).map_err(|error| {
+        // Raw reader: listing needs central-directory metadata only; encrypted
+        // entries would fail plain `by_index` without a password.
+        let file = zip.by_index_raw(i).map_err(|error| {
             CommandError::new(
                 "invalid_archive",
                 format!("Failed to read zip entry: {error}"),
             )
         })?;
+        if file.encrypted() {
+            has_encrypted = true;
+        }
         let raw_name = file.name();
         validate_entry_path(raw_name).map_err(|message| CommandError {
             code: "invalid_entry".into(),
@@ -105,19 +117,25 @@ fn open_zip_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
         largest_entry = largest_entry.max(file_size);
         deepest_path = deepest_path.max(normalized.bytes().filter(|&b| b == b'/').count() + 1);
         let modified_at = {
-            let dt = file.last_modified();
-            format!(
-                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                dt.year(),
-                dt.month(),
-                dt.day(),
-                dt.hour(),
-                dt.minute(),
-                dt.second()
-            )
+            match file.last_modified() {
+                Some(dt) => format!(
+                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                    dt.year(),
+                    dt.month(),
+                    dt.day(),
+                    dt.hour(),
+                    dt.minute(),
+                    dt.second()
+                ),
+                None => String::new(),
+            }
         };
         let method_label = if is_dir {
             None
+        } else if file.encrypted() {
+            // zip crate reports the underlying codec (Deflated/Stored) for AES
+            // entries; surface the encryption instead — it is what the user needs.
+            Some("AES-256".into())
         } else {
             Some(zip_method_label(file.compression()))
         };
@@ -191,6 +209,20 @@ fn open_zip_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
         }
     }
 
+    let mut warnings = assess_archive(ArchiveRiskInput {
+        entry_count: zip.len(),
+        total_uncompressed,
+        total_compressed,
+        largest_entry,
+        deepest_path,
+    });
+    if has_encrypted {
+        warnings.push(crate::security::ArchiveWarning {
+            code: "encrypted".into(),
+            message: "Archive contains encrypted entries. Password required to extract.".into(),
+        });
+    }
+
     Ok(ArchiveInfo {
         archive_path: path.to_string_lossy().into_owned(),
         format: "zip".into(),
@@ -204,13 +236,7 @@ fn open_zip_archive(path: &Path) -> Result<ArchiveInfo, CommandError> {
             encrypt: true,
             test: true,
         },
-        warnings: assess_archive(ArchiveRiskInput {
-            entry_count: zip.len(),
-            total_uncompressed,
-            total_compressed,
-            largest_entry,
-            deepest_path,
-        }),
+        warnings,
         stats: ArchiveStats {
             file_count,
             folder_count,

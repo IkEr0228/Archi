@@ -32,7 +32,7 @@ Release build uses Rust `[profile.release]` (LTO, strip, opt-level 3, panic=abor
 | Archive editing | **Working** | ZIP rebuild add/delete/rename/folder/replace. |
 | TAR/TAR.GZ/GZIP/TAR.BZ2/BZIP2/TAR.XZ/XZ | **Working** | Open/list/extract; create for TAR family (+ ZIP). |
 | CLI open + single-instance | **Working** | First path arg; second process forwards. |
-| 7z | **Working** | Open/list/extract unencrypted; create LZMA2 (Max = level 9). Encrypted 7z deferred. |
+| 7z | **Working** | Open/list/extract/create/test/edit with password (remember on session). |
 | File associations | **Working** | Opt-in HKCU only. |
 | RAR creation | Not appropriate | Proprietary; never advertise or implement creation. |
 | RAR reading/extraction | Deferred | Requires documented, licensed backend. |

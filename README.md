@@ -26,7 +26,7 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 | Format | Open / list | Extract | Create | Test | Edit | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | **ZIP** | Yes | Yes | Yes | Yes | Yes | Stored + Deflate. Edit: append add, logical/fast delete, stream rebuild rename/move. |
-| **7z** | Yes | Yes | Yes | Yes | Yes | LZMA/LZMA2; unencrypted. Edit: non-solid pack-copy (fallback stream rebuild / solid repack). |
+| **7z** | Yes | Yes | Yes | Yes | Yes | LZMA/LZMA2; encrypted with password (remember on session). Edit: non-solid pack-copy (fallback stream rebuild / solid repack). |
 | **TAR** | Yes | Yes | Yes | Yes | Yes | Create = store. Edit = stream rebuild. |
 | **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
 | **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | Edit = stream rebuild (outer recompress). |
@@ -143,8 +143,9 @@ Toolbar **Associations** registers Archi under **HKCU** only (not machine-wide, 
 
 ## Limitations
 
-- No RAR, no encrypted 7z / passwords UI, no single-stream create for raw `.gz`/`.bz2`/`.xz`
 - ZIP methods beyond Stored/Deflate are not decompressed
+- ZIP edit rewrites the whole archive per operation
+- No archive repair, multi-volume, or drag-into-open-archive yet
 - ZIP edit rewrites the whole archive per operation
 - No archive repair, multi-volume, or drag-into-open-archive yet
 - Secure extract path is Windows-focused

@@ -39,6 +39,7 @@ pub fn test_archive(
     archive_path: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
+    password: Option<String>,
     emit: impl FnMut(OperationProgress),
 ) -> Result<TestArchiveSummary, CommandError> {
     if operation_id.is_empty() {
@@ -49,7 +50,7 @@ pub fn test_archive(
     }
 
     match detect_format(archive_path)? {
-        ArchiveFormat::Zip => test_zip(archive_path, operation_id, cancelled, emit),
+        ArchiveFormat::Zip => test_zip(archive_path, operation_id, cancelled, password, emit),
         ArchiveFormat::Tar => test_tar_plain(archive_path, operation_id, cancelled, emit),
         ArchiveFormat::TarGz => test_tar_gz(archive_path, operation_id, cancelled, emit),
         ArchiveFormat::TarBz2 => test_tar_bz2(archive_path, operation_id, cancelled, emit),
@@ -59,7 +60,7 @@ pub fn test_archive(
             test_single_stream_bzip2(archive_path, operation_id, cancelled, emit)
         }
         ArchiveFormat::Xz => test_single_stream_xz(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::SevenZ => test_sevenz(archive_path, operation_id, cancelled, emit),
+        ArchiveFormat::SevenZ => test_sevenz(archive_path, operation_id, cancelled, password, emit),
     }
 }
 
@@ -92,6 +93,7 @@ fn test_zip(
     zip_path: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
+    password: Option<String>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<TestArchiveSummary, CommandError> {
     let file = File::open(zip_path)
@@ -116,13 +118,40 @@ fn test_zip(
         if cancelled.load(Ordering::Relaxed) {
             return Err(test_error("cancelled", "Archive test was cancelled."));
         }
-        let mut entry = archive.by_index(index).map_err(|error| {
-            test_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
-        })?;
+        let mut entry = match password.as_deref() {
+            Some(pw) => archive.by_index_decrypt(index, pw.as_bytes()).map_err(|error| {
+                if matches!(error, zip::result::ZipError::InvalidPassword) {
+                    test_error(
+                        "password_required",
+                        "Invalid password provided. Please try again.",
+                    )
+                } else {
+                    test_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
+                }
+            })?,
+            None => archive.by_index(index).map_err(|error| {
+                let lower = error.to_string().to_ascii_lowercase();
+                if lower.contains("password") || lower.contains("decrypt") {
+                    test_error(
+                        "password_required",
+                        "Archive is encrypted. Password required.",
+                    )
+                } else {
+                    test_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
+                }
+            })?,
+        };
+        let encrypted = entry.encrypted();
         let name = entry.name().to_string();
         let is_dir = entry.is_dir() || name.ends_with('/') || name.ends_with('\\');
         if is_dir {
             continue;
+        }
+        if encrypted && password.is_none() {
+            return Err(test_error(
+                "password_required",
+                "Archive is encrypted. Password required.",
+            ));
         }
         if last_progress.elapsed() >= PROGRESS_INTERVAL {
             emit(OperationProgress {
@@ -148,6 +177,16 @@ fn test_zip(
                 return Err(test_error("cancelled", "Archive test was cancelled."));
             }
             Err(msg) => {
+                let lower = msg.to_ascii_lowercase();
+                if lower.contains("password")
+                    || lower.contains("decrypt")
+                    || lower.contains("authentication")
+                {
+                    return Err(test_error(
+                        "password_required",
+                        "Invalid password provided. Please try again.",
+                    ));
+                }
                 tested += 1;
                 tested_failed += 1;
                 if failures.len() < MAX_FAILURES {
@@ -390,12 +429,23 @@ fn test_sevenz(
     path: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
+    password: Option<String>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<TestArchiveSummary, CommandError> {
     use sevenz_rust2::{ArchiveReader, Password};
 
-    let mut reader = ArchiveReader::open(path, Password::empty())
-        .map_err(|e| test_error("invalid_archive", format!("Cannot read 7z structure: {e}")))?;
+    let pw = password.as_deref().map_or_else(Password::empty, Password::new);
+    let mut reader = ArchiveReader::open(path, pw).map_err(|e| {
+        let msg = e.to_string().to_ascii_lowercase();
+        if msg.contains("password") || msg.contains("encrypt") {
+            test_error(
+                "password_required",
+                "Invalid password provided. Please try again.",
+            )
+        } else {
+            test_error("invalid_archive", format!("Cannot read 7z structure: {e}"))
+        }
+    })?;
 
     let total = reader
         .archive()
@@ -481,6 +531,13 @@ fn test_sevenz(
         let msg = e.to_string();
         if msg.contains("cancelled") {
             return Err(test_error("cancelled", "Archive test was cancelled."));
+        }
+        let lower = msg.to_ascii_lowercase();
+        if lower.contains("password") || lower.contains("encrypt") {
+            return Err(test_error(
+                "password_required",
+                "Invalid password provided. Please try again.",
+            ));
         }
         return Err(test_error(
             "invalid_archive",

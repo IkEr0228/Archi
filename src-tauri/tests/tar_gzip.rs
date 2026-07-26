@@ -47,7 +47,7 @@ fn open_lists_tar_nested() {
     let tar_path = root.join("n.tar");
     write_plain_tar(&tar_path, "dir/a.txt", b"payload");
 
-    let info = open_archive(&tar_path).unwrap();
+    let info = open_archive(&tar_path, None).unwrap();
     assert_eq!(info.format, "tar");
     assert!(info.capabilities.extract);
     assert!(!info.capabilities.create);
@@ -76,6 +76,7 @@ fn extract_tar_writes_file() {
         "tar-ex-1",
         &AtomicBool::new(false),
         None,
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -99,6 +100,7 @@ fn extract_tar_selected_file_only() {
         "tar-sel-file",
         &AtomicBool::new(false),
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -130,6 +132,7 @@ fn extract_tar_selected_directory_recursively() {
         "tar-sel-dir",
         &AtomicBool::new(false),
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -159,6 +162,7 @@ fn extract_tar_invalid_selection_writes_nothing() {
         "tar-sel-invalid",
         &AtomicBool::new(false),
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -184,6 +188,7 @@ fn extract_tar_gz_writes_file() {
         "tgz-1",
         &AtomicBool::new(false),
         None,
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -205,7 +210,7 @@ fn extract_single_gzip() {
         enc.finish().unwrap();
     }
     assert_eq!(detect_format(&path).unwrap(), ArchiveFormat::Gzip);
-    let info = open_archive(&path).unwrap();
+    let info = open_archive(&path, None).unwrap();
     assert_eq!(info.format, "gzip");
     assert_eq!(info.entries.len(), 1);
     assert_eq!(info.entries[0].name, "notes.txt");
@@ -215,6 +220,7 @@ fn extract_single_gzip() {
         &dest,
         "gz-1",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -237,7 +243,7 @@ fn open_gzip_size_matches_isize_payload() {
         enc.finish().unwrap();
     }
 
-    let info = open_archive(&path).unwrap();
+    let info = open_archive(&path, None).unwrap();
     assert_eq!(info.format, "gzip");
     assert_eq!(info.entries.len(), 1);
     assert_eq!(
@@ -278,7 +284,7 @@ fn extract_tar_bz2_writes_file() {
     write_tar_bz2(&path, "y.bin", b"bzipped-tar");
 
     assert_eq!(detect_format(&path).unwrap(), ArchiveFormat::TarBz2);
-    let info = open_archive(&path).unwrap();
+    let info = open_archive(&path, None).unwrap();
     assert_eq!(info.format, "tar.bz2");
     assert!(!info.capabilities.create);
 
@@ -287,6 +293,7 @@ fn extract_tar_bz2_writes_file() {
         &dest,
         "tbz-1",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -312,7 +319,7 @@ fn extract_single_bzip2() {
         enc.finish().unwrap();
     }
     assert_eq!(detect_format(&path).unwrap(), ArchiveFormat::Bzip2);
-    let info = open_archive(&path).unwrap();
+    let info = open_archive(&path, None).unwrap();
     assert_eq!(info.format, "bzip2");
     assert_eq!(info.entries.len(), 1);
     assert_eq!(info.entries[0].name, "notes.txt");
@@ -322,6 +329,7 @@ fn extract_single_bzip2() {
         &dest,
         "bz2-1",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -354,7 +362,7 @@ fn extract_tar_xz_writes_file() {
     write_tar_xz(&path, "y.bin", b"xzipped-tar");
 
     assert_eq!(detect_format(&path).unwrap(), ArchiveFormat::TarXz);
-    let info = open_archive(&path).unwrap();
+    let info = open_archive(&path, None).unwrap();
     assert_eq!(info.format, "tar.xz");
     assert!(!info.capabilities.create);
 
@@ -363,6 +371,7 @@ fn extract_tar_xz_writes_file() {
         &dest,
         "txz-1",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -387,7 +396,7 @@ fn extract_single_xz() {
         enc.finish().unwrap();
     }
     assert_eq!(detect_format(&path).unwrap(), ArchiveFormat::Xz);
-    let info = open_archive(&path).unwrap();
+    let info = open_archive(&path, None).unwrap();
     assert_eq!(info.format, "xz");
     assert_eq!(info.entries.len(), 1);
     assert_eq!(info.entries[0].name, "notes.txt");
@@ -397,6 +406,7 @@ fn extract_single_xz() {
         &dest,
         "xz-1",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -411,15 +421,15 @@ fn zip_open_still_works() {
     let root = common::temp_dir("zip-still");
     let zip_path = root.join("a.zip");
     {
-        use zip::write::FileOptions;
+        use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
         let file = File::create(&zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        zip.start_file("z.txt", FileOptions::default()).unwrap();
+        zip.start_file("z.txt", SimpleFileOptions::default()).unwrap();
         zip.write_all(b"zip").unwrap();
         zip.finish().unwrap();
     }
-    let info = open_archive(&zip_path).unwrap();
+    let info = open_archive(&zip_path, None).unwrap();
     assert_eq!(info.format, "zip");
     assert!(info.capabilities.create);
     assert!(info.capabilities.test);

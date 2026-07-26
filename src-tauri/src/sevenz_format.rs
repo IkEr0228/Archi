@@ -18,7 +18,7 @@ use crate::security::{
 };
 #[cfg(windows)]
 use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory};
-use sevenz_rust2::encoder_options::Lzma2Options;
+use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
 use std::collections::{BTreeSet, HashMap};
 use std::fs::{self, File};
@@ -38,22 +38,18 @@ fn sz_error(code: &str, message: impl Into<String>) -> CommandError {
 }
 
 fn map_sz_error(error: sevenz_rust2::Error) -> CommandError {
-    use sevenz_rust2::Error as E;
     match &error {
-        E::PasswordRequired | E::MaybeBadPassword(_) => sz_error(
-            "password_required",
-            "Encrypted 7z archives are not supported yet. Open an unencrypted archive.",
-        ),
         _ => {
             let message = error.to_string();
             let lower = message.to_ascii_lowercase();
             if lower.contains("password") || lower.contains("encrypt") {
-                return sz_error(
+                sz_error(
                     "password_required",
-                    "Encrypted 7z archives are not supported yet. Open an unencrypted archive.",
-                );
+                    "Invalid password provided. Please try again.",
+                )
+            } else {
+                sz_error("invalid_archive", format!("7z error: {message}"))
             }
-            sz_error("invalid_archive", format!("7z error: {message}"))
         }
     }
 }
@@ -65,7 +61,7 @@ fn read_only_open_capabilities() -> ArchiveCapabilities {
         extract: true,
         create: false,
         edit: true,
-        encrypt: false,
+        encrypt: true,
         test: true,
     }
 }
@@ -88,12 +84,12 @@ fn normalize_member_name(raw: &str) -> Result<String, CommandError> {
 }
 
 /// Open a 7z archive for listing.
-pub fn open_sevenz(path: &Path) -> Result<ArchiveInfo, CommandError> {
+pub fn open_sevenz(path: &Path, password: Password) -> Result<ArchiveInfo, CommandError> {
     if !path.is_file() {
         return Err(sz_error("not_found", "File not found or is not a file."));
     }
     let on_disk = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    let reader = ArchiveReader::open(path, Password::empty()).map_err(map_sz_error)?;
+    let reader = ArchiveReader::open(path, password).map_err(map_sz_error)?;
     let archive = reader.archive();
 
     // Virtual parents roughly double entry count in deep trees; reserve modestly.
@@ -252,6 +248,7 @@ pub fn extract_sevenz(
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
     conflict_resolver: &dyn ConflictResolver,
+    password: Option<String>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
     if operation_id.is_empty() {
@@ -273,7 +270,8 @@ pub fn extract_sevenz(
         )
     })?;
 
-    let mut reader = ArchiveReader::open(path, Password::empty()).map_err(map_sz_error)?;
+    let pw = password.as_deref().map_or(Password::empty(), Password::new);
+    let mut reader = ArchiveReader::open(path, pw).map_err(map_sz_error)?;
     let names: Vec<String> = reader
         .archive()
         .files
@@ -699,6 +697,7 @@ pub fn create_sevenz_archive(
     output_path: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
+    password: Password,
     options: &CreateOptions,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
@@ -724,7 +723,15 @@ pub fn create_sevenz_archive(
 
     let result = (|| -> Result<OperationSummary, CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
-        writer.set_content_methods(vec![Lzma2Options::from_level(level).into()]);
+        let methods = if password.is_empty() {
+            vec![Lzma2Options::from_level(level).into()]
+        } else {
+            vec![
+                AesEncoderOptions::new(password).into(),
+                Lzma2Options::from_level(level).into(),
+            ]
+        };
+        writer.set_content_methods(methods);
 
         let mut processed = 0_u64;
         let mut progress_gate = ProgressGate::new();

@@ -299,6 +299,7 @@ fn extract_windows(
     destination: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
+    password: Option<&str>,
     conflict_resolver: &dyn ConflictResolver,
     emit: &mut impl FnMut(OperationProgress),
     plans: &[PlannedEntry],
@@ -420,9 +421,28 @@ fn extract_windows(
                             format!("Cannot securely create temporary file: {error}"),
                         )
                     })?;
-                let mut entry = archive.by_index(plan.index).map_err(|error| {
-                    extraction_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
-                })?;
+                let mut entry = match password {
+                    Some(pw) => archive.by_index_decrypt(plan.index, pw.as_bytes()).map_err(|error| {
+                        let lower = error.to_string().to_ascii_lowercase();
+                        if matches!(error, zip::result::ZipError::InvalidPassword)
+                            || lower.contains("password")
+                            || lower.contains("decrypt")
+                        {
+                            extraction_error(
+                                "password_required",
+                                "Invalid password provided. Please try again.",
+                            )
+                        } else {
+                            extraction_error(
+                                "invalid_archive",
+                                format!("Cannot read ZIP entry: {error}"),
+                            )
+                        }
+                    })?,
+                    None => archive.by_index(plan.index).map_err(|error| {
+                        extraction_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
+                    })?,
+                };
                 let mut buffer = [0; BUFFER_SIZE];
                 {
                     let mut writer = output.as_ref();
@@ -431,10 +451,21 @@ fn extract_windows(
                             return Err(cancelled_error());
                         }
                         let read = entry.read(&mut buffer).map_err(|error| {
-                            extraction_error(
-                                "invalid_archive",
-                                format!("Cannot read ZIP data: {error}"),
-                            )
+                            let lower = error.to_string().to_ascii_lowercase();
+                            if lower.contains("password")
+                                || lower.contains("decrypt")
+                                || lower.contains("authentication")
+                            {
+                                extraction_error(
+                                    "password_required",
+                                    "Invalid password provided. Please try again.",
+                                )
+                            } else {
+                                extraction_error(
+                                    "invalid_archive",
+                                    format!("Cannot read ZIP data: {error}"),
+                                )
+                            }
                         })?;
                         if read == 0 {
                             break;
@@ -510,6 +541,7 @@ pub fn extract_any(
     operation_id: &str,
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
+    password: Option<String>,
     conflict_resolver: &dyn ConflictResolver,
     emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
@@ -520,6 +552,7 @@ pub fn extract_any(
             operation_id,
             cancelled,
             selected_paths,
+            password,
             conflict_resolver,
             emit,
         ),
@@ -593,6 +626,7 @@ pub fn extract_any(
             cancelled,
             selected_paths,
             conflict_resolver,
+            password,
             emit,
         ),
     }
@@ -604,6 +638,7 @@ pub fn extract_archive(
     operation_id: &str,
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
+    password: Option<String>,
     conflict_resolver: &dyn ConflictResolver,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
@@ -662,15 +697,21 @@ pub fn extract_archive(
     };
     let mut plans = Vec::with_capacity(archive.len());
     let mut planned_paths = HashSet::with_capacity(archive.len());
+    let mut has_encrypted = false;
     for index in 0..archive.len() {
         // Bounded cancel ticks so large archives can abort during plan, not only extract.
         if index % PLAN_CANCEL_CHECK_INTERVAL == 0 && cancelled.load(Ordering::Relaxed) {
             return Err(cancelled_error());
         }
-        let entry = archive.by_index(index).map_err(|error| {
+        // Raw reader for planning: metadata only; encrypted entries are opened
+        // with the password later in the data pass.
+        let entry = archive.by_index_raw(index).map_err(|error| {
             extraction_error("invalid_archive", format!("Cannot read ZIP entry: {error}"))
         })?;
         let name = entry.name().to_string();
+        if entry.encrypted() {
+            has_encrypted = true;
+        }
         let name_norm = normalize_entry_name(&name);
         if let Some(ref idx) = selection_index {
             archive_names.push(name.clone());
@@ -746,12 +787,20 @@ pub fn extract_archive(
         }
     }
 
+    if has_encrypted && password.is_none() {
+        return Err(extraction_error(
+            "password_required",
+            "Archive is encrypted. Password required.",
+        ));
+    }
+
     #[cfg(windows)]
     return extract_windows(
         &mut archive,
         &destination,
         operation_id,
         cancelled,
+        password.as_deref(),
         conflict_resolver,
         &mut emit,
         &plans,

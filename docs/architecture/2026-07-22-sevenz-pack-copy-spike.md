@@ -113,7 +113,7 @@ Archi create currently uses **non-solid** per-file streams for Store/Fast/Normal
 2. **Metadata fidelity** — preserves size/CRC/name; timestamps/attributes from source entry are cloned but directory order may differ slightly from stream_rebuild.
 3. **Dirty members** — hybrid: pack-copy keep + re-encode NewFile (add/replace).
 4. **External archives** — multi-coder (BCJ+LZMA2), solid, or exotic methods correctly refused; fallback to stream_rebuild/repack.
-5. **Header encryption** — sets `set_encrypt_header(false)` for simplicity.
+5. **Header encryption** — sets `set_encrypt_header(false)` for simplicity (now supported with password remember).
 6. **Pack CRC** — computed on copy; source pack CRCs not required to be present.
 7. **Do not force corrupt paths** — on any eligibility miss, skip pack-copy (or return `pack_copy_ineligible` from spike APIs) and leave original untouched until a successful publish.
 

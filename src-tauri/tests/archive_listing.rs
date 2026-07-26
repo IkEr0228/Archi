@@ -3,7 +3,7 @@ mod common;
 use archi_backend_lib::archive::open_archive;
 use std::fs::File;
 use std::io::Write;
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime, ZipWriter};
 
 #[test]
@@ -12,7 +12,7 @@ fn lists_zip_metadata_once() {
     let archive_path = root.join("listing.zip");
     common::write_zip(&archive_path, &[("folder/file.txt", b"content")]);
 
-    let info = open_archive(&archive_path).unwrap();
+    let info = open_archive(&archive_path, None).unwrap();
 
     assert_eq!(info.format, "zip");
     assert!(info.capabilities.test);
@@ -53,10 +53,10 @@ fn explicit_directory_metadata_replaces_synthesized_metadata() {
     let root = common::temp_dir("explicit-directory");
     let archive_path = root.join("listing.zip");
     let mut zip = ZipWriter::new(File::create(&archive_path).unwrap());
-    let file_options = FileOptions::default()
+    let file_options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .last_modified_time(DateTime::from_date_and_time(2023, 1, 2, 3, 4, 6).unwrap());
-    let directory_options = FileOptions::default()
+    let directory_options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .last_modified_time(DateTime::from_date_and_time(2024, 5, 6, 7, 8, 10).unwrap());
     zip.start_file("explicit/file.txt", file_options).unwrap();
@@ -64,7 +64,7 @@ fn explicit_directory_metadata_replaces_synthesized_metadata() {
     zip.add_directory("explicit/", directory_options).unwrap();
     zip.finish().unwrap();
 
-    let info = open_archive(&archive_path).unwrap();
+    let info = open_archive(&archive_path, None).unwrap();
 
     assert_eq!(
         info.entries
@@ -85,7 +85,7 @@ fn rejects_invalid_entry_paths() {
     let archive_path = root.join("invalid.zip");
     common::write_zip(&archive_path, &[("../evil.txt", b"content")]);
 
-    let error = open_archive(&archive_path).unwrap_err();
+    let error = open_archive(&archive_path, None).unwrap_err();
 
     assert_eq!(error.code, "invalid_entry");
     std::fs::remove_dir_all(root).unwrap();

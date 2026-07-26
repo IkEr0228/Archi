@@ -204,7 +204,7 @@ fn zip_open_reports_edit_capability() {
     let zip_path = root.join("sample.zip");
     common::write_zip(&zip_path, &[("a.txt", b"a")]);
 
-    let info = open_archive(&zip_path).unwrap();
+    let info = open_archive(&zip_path, None).unwrap();
     assert!(info.capabilities.edit);
 
     fs::remove_dir_all(root).unwrap();

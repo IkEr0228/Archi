@@ -30,6 +30,7 @@ fn options(compression: CompressionPreset, include_root: bool, overwrite: bool) 
         compression,
         include_root,
         overwrite,
+        password: None,
     }
 }
 
@@ -186,6 +187,7 @@ fn renames_windows_namespace_collisions() {
         &destination,
         "extract-collisions",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},

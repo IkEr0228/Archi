@@ -21,15 +21,16 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1.0", features = ["derive"] }
-# Stored + Deflate + AES-256 — aes-crypto enabled (bzip2/zstd still dropped for slim binary).
-zip = { version = "0.6", default-features = false, features = ["deflate", "aes-crypto"] }
+# Stored + Deflate + AES-256 read/write — aes-crypto enabled (bzip2/zstd still dropped for slim binary).
+# zip 2.2+ required: 0.6.x cannot write AES-encrypted entries.
+zip = { version = "2.4", default-features = false, features = ["deflate", "aes-crypto"] }
 tar = "0.4"
 flate2 = "1"
 bzip2 = "0.5"
 xz2 = "0.1"
 # Slim features: smaller binary; LZMA/LZMA2 still available for open/create.
 # Pack-copy spike uses a local vendor fork (push_packed_entry); see vendor/sevenz-rust2.
-sevenz-rust2 = { path = "../vendor/sevenz-rust2", version = "0.21", default-features = false, features = ["compress", "util"] }
+sevenz-rust2 = { path = "../vendor/sevenz-rust2", version = "0.21", default-features = false, features = ["compress", "util", "aes256"] }
 winreg = "0.55"
 
 # Desktop release: speed + smaller binary.

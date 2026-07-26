@@ -9,6 +9,7 @@ use crate::models::{
 };
 use crate::sevenz_edit;
 use crate::sevenz_format::create_sevenz_archive;
+use sevenz_rust2::Password;
 use crate::tar_create::create_tar_archive;
 use crate::tar_edit;
 use crate::zip_edit;
@@ -91,6 +92,7 @@ fn recreate_from_work(
         compression: default_compression(fmt),
         include_root: false,
         overwrite: true,
+        password: None,
     };
     let sources = vec![work.to_string_lossy().into_owned()];
     let summary = match fmt {
@@ -112,14 +114,21 @@ fn recreate_from_work(
                 &mut emit,
             )?
         }
-        CreateFormat::SevenZ => create_sevenz_archive(
-            &sources,
-            archive_path,
-            operation_id,
-            cancelled,
-            &options,
-            &mut emit,
-        )?,
+        CreateFormat::SevenZ => {
+            let password = match &options.password {
+                Some(pw) => Password::new(pw),
+                None => Password::empty(),
+            };
+            create_sevenz_archive(
+                &sources,
+                archive_path,
+                operation_id,
+                cancelled,
+                password,
+                &options,
+                &mut emit,
+            )?
+        }
     };
     Ok(summary.extracted_files)
 }
@@ -137,6 +146,7 @@ fn extract_all_to_work(
         work,
         operation_id,
         cancelled,
+        None,
         None,
         &FailOnConflict,
         |p| emit(p),
@@ -323,6 +333,7 @@ pub fn delete_entries(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -330,7 +341,7 @@ pub fn delete_entries(
             zip_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, options)
         }
         ArchiveFormat::SevenZ => {
-            sevenz_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, options)
+            sevenz_edit::delete_entries(archive_path, paths, operation_id, cancelled, emit, password, options)
         }
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
@@ -352,6 +363,7 @@ pub fn rename_entry(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -370,6 +382,7 @@ pub fn rename_entry(
             operation_id,
             cancelled,
             emit,
+            password,
             options,
         ),
         ArchiveFormat::Tar
@@ -397,6 +410,7 @@ pub fn create_folder(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -414,6 +428,7 @@ pub fn create_folder(
             operation_id,
             cancelled,
             emit,
+            password,
             options,
         ),
         ArchiveFormat::Tar
@@ -441,6 +456,7 @@ pub fn add_paths(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -460,6 +476,7 @@ pub fn add_paths(
             operation_id,
             cancelled,
             emit,
+            password,
             options,
         ),
         ArchiveFormat::Tar
@@ -488,6 +505,7 @@ pub fn replace_file(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -506,6 +524,7 @@ pub fn replace_file(
             operation_id,
             cancelled,
             emit,
+            password,
             options,
         ),
         ArchiveFormat::Tar
@@ -533,6 +552,7 @@ pub fn compact_archive(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -540,7 +560,7 @@ pub fn compact_archive(
             zip_edit::compact_archive(archive_path, operation_id, cancelled, emit)
         }
         ArchiveFormat::SevenZ => {
-            sevenz_edit::compact_archive(archive_path, operation_id, cancelled, emit, options)
+            sevenz_edit::compact_archive(archive_path, operation_id, cancelled, emit, password, options)
         }
         ArchiveFormat::Tar
         | ArchiveFormat::TarGz
@@ -563,6 +583,7 @@ pub fn move_entries(
     operation_id: &str,
     cancelled: &AtomicBool,
     emit: impl FnMut(OperationProgress),
+    password: Option<String>,
     options: &EditOptions,
 ) -> Result<EditSummary, CommandError> {
     match detect_format(archive_path)? {
@@ -581,6 +602,7 @@ pub fn move_entries(
             operation_id,
             cancelled,
             emit,
+            password,
             options,
         ),
         ArchiveFormat::Tar

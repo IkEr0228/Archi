@@ -14,6 +14,7 @@ fn options(format: CreateFormat, compression: CompressionPreset) -> CreateOption
         compression,
         include_root: true,
         overwrite: false,
+        password: None,
     }
 }
 
@@ -43,7 +44,7 @@ fn round_trip(format: CreateFormat, expected_detect: ArchiveFormat, ext: &str) {
     .unwrap();
 
     assert_eq!(detect_format(&out).unwrap(), expected_detect);
-    let info = open_archive(&out).unwrap();
+    let info = open_archive(&out, None).unwrap();
     assert_eq!(info.format, format.as_str());
     assert!(!info.capabilities.create);
 
@@ -52,6 +53,7 @@ fn round_trip(format: CreateFormat, expected_detect: ArchiveFormat, ext: &str) {
         &dest,
         "ex-1",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -126,7 +128,7 @@ fn create_tar_xz_shrinks_and_reports_ratio() {
     .unwrap();
 
     let on_disk = fs::metadata(&out).unwrap().len();
-    let info = open_archive(&out).unwrap();
+    let info = open_archive(&out, None).unwrap();
     assert_eq!(info.stats.total_compressed, on_disk);
     assert!(
         info.stats.total_compressed < info.stats.total_uncompressed,

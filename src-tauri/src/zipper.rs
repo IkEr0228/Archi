@@ -14,8 +14,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use zip::write::FileOptions;
 use zip::ZipWriter;
 
-fn zip_file_options(preset: CompressionPreset, password: Option<&str>) -> FileOptions {
-    let mut opts = match preset {
+fn zip_file_options<'a>(preset: CompressionPreset, password: Option<&'a str>) -> FileOptions<'a, ()> {
+    let opts = match preset {
         CompressionPreset::Store => {
             FileOptions::default().compression_method(zip::CompressionMethod::Stored)
         }
@@ -30,9 +30,10 @@ fn zip_file_options(preset: CompressionPreset, password: Option<&str>) -> FileOp
             .compression_level(Some(9)),
     };
     if let Some(p) = password {
-        opts = opts.with_aes_encryption_bytes(zip::write::AesMode::Aes256, p.as_bytes());
+        opts.with_aes_encryption(zip::AesMode::Aes256, p)
+    } else {
+        opts
     }
-    opts
 }
 
 /// Creates a ZIP archive atomically from the given source files and directories.
@@ -85,7 +86,7 @@ pub fn create_zip_archive(
             }
 
             let mut source = if entry.is_directory {
-                zip.add_directory(&entry.archive_path, FileOptions::default())
+                zip.add_directory(&entry.archive_path, FileOptions::<'static, ()>::default())
                     .map_err(|error| {
                         create_error("write_failed", format!("Cannot add directory: {error}"))
                     })?;

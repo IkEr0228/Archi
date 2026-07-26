@@ -12,6 +12,7 @@
   import EmptyStateComponent from '../components/EmptyState.svelte';
   import ArchiveTableComponent from '../components/ArchiveTable.svelte';
   import CreateArchiveModal from '../components/CreateArchiveModal.svelte';
+  import PasswordDialog from '../components/PasswordDialog.svelte';
   import FileAssociationsModal from '../components/FileAssociationsModal.svelte';
   import {
     canExtractArchive,
@@ -111,6 +112,19 @@
   interface EditOptions {
     strategy?: EditStrategy | null;
     compression?: 'store' | 'fast' | 'normal' | 'max' | null;
+    password?: string | null;
+  }
+
+  /** Extracts backend CommandError code from an invoke rejection. */
+  function invokeErrorCode(error: unknown): string | null {
+    if (!error || typeof error !== 'object') return null;
+    const obj = error as Record<string, unknown>;
+    const nested =
+      obj.error && typeof obj.error === 'object'
+        ? (obj.error as Record<string, unknown>)
+        : null;
+    const code = obj.code ?? nested?.code;
+    return typeof code === 'string' ? code : null;
   }
 
   const EDIT_STRATEGY_KEY = 'archi.editStrategy';
@@ -207,7 +221,48 @@
   let createCompression = $state<'store' | 'fast' | 'normal' | 'max'>('normal');
   let createIncludeRoot = $state(true);
   let createOverwrite = $state(false);
+  let createPassword = $state('');
   let createOutputPath = $state('');
+
+  // Password for the currently open archive (extract / test / edit reuse).
+  let archivePassword = $state<string | null>(null);
+
+  // Password prompt for encrypted archives (open / extract / test retry).
+  type PasswordPrompt = {
+    purpose: 'open' | 'extract' | 'test';
+    title: string;
+    failed: boolean;
+    path?: string;
+    preserveInternalPath?: string;
+    mode?: ExtractMode;
+  };
+  let passwordPrompt = $state<PasswordPrompt | null>(null);
+  let promptPassword = $state('');
+  let promptRemember = $state(false);
+
+  function askPassword(prompt: Omit<PasswordPrompt, 'failed'>, failed = false) {
+    promptPassword = '';
+    passwordPrompt = { ...prompt, failed };
+  }
+
+  function handlePromptConfirm(pw: string) {
+    const prompt = passwordPrompt;
+    passwordPrompt = null;
+    if (!prompt) return;
+    if (promptRemember) {
+      archivePassword = pw;
+    }
+    if (prompt.purpose === 'open' && prompt.path) {
+      openArchiveAtPath(prompt.path, {
+        preserveInternalPath: prompt.preserveInternalPath,
+        password: pw
+      });
+    } else if (prompt.purpose === 'extract' && prompt.mode) {
+      runExtract(prompt.mode, pw);
+    } else if (prompt.purpose === 'test') {
+      handleTestArchive(pw);
+    }
+  }
 
   // Search / filter / sort (table wiring of filters in Task 3)
   let searchInput = $state('');
@@ -302,7 +357,7 @@
   let editStrategy = $state<EditStrategy>(loadEditStrategy());
 
   function currentEditOptions(): EditOptions {
-    return { strategy: editStrategy };
+    return { strategy: editStrategy, password: archivePassword };
   }
 
   function handleEditStrategyChange(strategy: EditStrategy) {
@@ -514,7 +569,7 @@
 
   async function openArchiveAtPath(
     path: string,
-    options?: { preserveInternalPath?: string }
+    options?: { preserveInternalPath?: string; password?: string }
   ) {
     const requestId = ++openRequestId;
     const preservePath = options?.preserveInternalPath;
@@ -524,7 +579,10 @@
       archiveCapabilities = { ...unavailableCapabilities };
       archiveWarnings = [];
       risksAcknowledged = true;
-      const info = await invoke<ArchiveInfo>('open_archive_metadata', { path });
+      const info = await invoke<ArchiveInfo>('open_archive_metadata', {
+        path,
+        password: options?.password ?? null
+      });
       if (requestId !== openRequestId) return;
       currentArchivePath = info.archive_path;
       currentArchiveFormat = info.format ?? '';
@@ -533,6 +591,7 @@
       archiveWarnings = info.warnings ?? [];
       archiveStats = info.stats ?? { ...emptyStats };
       risksAcknowledged = archiveWarnings.length === 0;
+      archivePassword = options?.password ?? null;
       // Indexes for preserve-path check (same shape as $derived archiveIndexes).
       const openIndexes = buildArchiveIndexes(info.entries);
       if (preservePath && folderStillExists(openIndexes, preservePath)) {
@@ -544,6 +603,18 @@
       operationStatus = `Loaded ${info.entries.length} entries.`;
     } catch (e: any) {
       if (requestId !== openRequestId) return;
+      if (invokeErrorCode(e) === 'password_required') {
+        askPassword({
+          purpose: 'open',
+          path,
+          preserveInternalPath: preservePath,
+          title: options?.password
+            ? 'Invalid password — try again'
+            : 'Archive is password-protected'
+        }, !!options?.password);
+        operationStatus = 'Password required';
+        return;
+      }
       console.error(e);
       archiveCapabilities = { ...unavailableCapabilities };
       archiveWarnings = [];
@@ -567,7 +638,7 @@
     showPropertiesModal = true;
   }
 
-  async function handleTestArchive() {
+  async function handleTestArchive(password?: string) {
     if (!canTest || activeOperation) return;
     let operationId: string | null = null;
     try {
@@ -581,9 +652,13 @@
 
       const summary = await invoke<TestArchiveSummary>('test_archive_command', {
         operationId,
-        zipPath: currentArchivePath
+        zipPath: currentArchivePath,
+        password: password ?? archivePassword
       });
       if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
+      if (password) {
+        archivePassword = password;
+      }
 
       if (summary.tested_failed === 0) {
         operationStatus = `Test OK: ${summary.tested_ok} file(s).`;
@@ -596,6 +671,13 @@
       }
     } catch (e: any) {
       if (operationId && activeOperation?.id !== operationId) return;
+      if (invokeErrorCode(e) === 'password_required') {
+        askPassword({
+          purpose: 'test',
+          title: password ? 'Invalid password — try again' : 'Archive is password-protected'
+        }, !!password);
+        return;
+      }
       errorMessage = `Archive test failed: ${formatInvokeError(e)}`;
       operationStatus = 'Error';
     } finally {
@@ -619,7 +701,7 @@
 
   type ExtractMode = 'all' | 'selected' | 'here' | 'named';
 
-  async function runExtract(mode: ExtractMode) {
+  async function runExtract(mode: ExtractMode, password?: string) {
     if (!isArchiveOpen || activeOperation) return;
     if (!canExtractArchive({
       extractCapability: archiveCapabilities.extract,
@@ -630,6 +712,16 @@
       return;
     }
     if (mode === 'selected' && selectedPaths.size === 0) return;
+
+    // Encrypted entries detected at listing time and no password yet — ask first.
+    const effectivePassword = password ?? archivePassword;
+    if (
+      !effectivePassword &&
+      archiveWarnings.some((w) => w.code === 'encrypted')
+    ) {
+      askPassword({ purpose: 'extract', mode, title: 'Archive is password-protected' });
+      return;
+    }
 
     let operationId: string | null = null;
     try {
@@ -667,14 +759,29 @@
         operationId,
         zipPath: currentArchivePath,
         destDir,
-        selectedPaths: selected
+        selectedPaths: selected,
+        password: effectivePassword
       });
       if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
+      if (effectivePassword) {
+        archivePassword = effectivePassword;
+      }
       const skipped =
         summary.skipped_files > 0 ? ` (${summary.skipped_files} skipped)` : '';
       operationStatus = `Extracted ${summary.extracted_files} entries to: ${summary.destination}${skipped}`;
     } catch (e: any) {
       if (operationId && activeOperation?.id !== operationId) return;
+      if (invokeErrorCode(e) === 'password_required') {
+        archivePassword = null;
+        askPassword({
+          purpose: 'extract',
+          mode,
+          title: effectivePassword
+            ? 'Invalid password — try again'
+            : 'Archive is password-protected'
+        }, !!effectivePassword);
+        return;
+      }
       errorMessage = `Extraction failed: ${formatInvokeError(e)}`;
       operationStatus = 'Error';
     } finally {
@@ -730,6 +837,7 @@
     createIncludeRoot = true;
     createOverwrite = false;
     createOutputPath = '';
+    createPassword = '';
   }
 
   function openCreateModal(sources: string[]) {
@@ -782,11 +890,13 @@
     const outputPath = ensureCreateExtension(createOutputPath.trim(), createFormat);
     const sources = [...createSources];
     const compression = createFormat === 'tar' ? 'store' : createCompression;
+    const trimmedPassword = createPassword.trim();
     const options = {
       format: createFormat,
       compression,
       includeRoot: createIncludeRoot,
-      overwrite: createOverwrite
+      overwrite: createOverwrite,
+      password: trimmedPassword || null
     };
     showCreateModal = false;
     try {
@@ -807,7 +917,10 @@
       });
       if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
       operationStatus = `Created ${summary.extracted_files} entries at: ${summary.destination}`;
-      await openArchiveAtPath(outputPath);
+      // Backend may switch tar+password output to .7z — open the real destination.
+      await openArchiveAtPath(summary.destination, {
+        password: trimmedPassword || undefined
+      });
     } catch (e: any) {
       if (operationId && activeOperation?.id !== operationId) return;
       errorMessage = `Archive creation failed: ${formatInvokeError(e)}`;
@@ -1312,6 +1425,7 @@
     includeRoot={createIncludeRoot}
     overwrite={createOverwrite}
     outputPath={createOutputPath}
+    bind:password={createPassword}
     busy={!!activeOperation}
     onFormat={handleCreateFormatChange}
     onCompression={(v: 'store' | 'fast' | 'normal' | 'max') => (createCompression = v)}
@@ -1320,6 +1434,19 @@
     onBrowseOutput={browseCreateOutput}
     onCreate={confirmCreateArchive}
     onCancel={() => (showCreateModal = false)}
+  />
+{/if}
+
+<!-- Password prompt for encrypted archives -->
+{#if passwordPrompt}
+  <PasswordDialog
+    title={passwordPrompt.title}
+    archiveName={currentArchivePath}
+    error={passwordPrompt.failed ? 'Invalid password. Please try again.' : ''}
+    bind:password={promptPassword}
+    bind:remember={promptRemember}
+    onConfirm={handlePromptConfirm}
+    onCancel={() => (passwordPrompt = null)}
   />
 {/if}
 

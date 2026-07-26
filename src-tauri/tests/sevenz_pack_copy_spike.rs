@@ -27,6 +27,7 @@ fn fast_create_options() -> CreateOptions {
         compression: CompressionPreset::Fast,
         include_root: false,
         overwrite: false,
+        password: None,
     }
 }
 
@@ -43,6 +44,7 @@ fn create_three_file_nonsolid(root: &Path, payload: &[u8]) -> PathBuf {
         &out,
         "7z-pack-copy-create",
         &AtomicBool::new(false),
+        Password::empty(),
         &fast_create_options(),
         |_| {},
     )
@@ -51,7 +53,7 @@ fn create_three_file_nonsolid(root: &Path, payload: &[u8]) -> PathBuf {
 }
 
 fn entry_names(archive: &Path) -> Vec<String> {
-    let info = open_archive(archive).unwrap();
+    let info = open_archive(archive, None).unwrap();
     let mut names: Vec<String> = info
         .entries
         .iter()
@@ -78,6 +80,7 @@ fn entry_bytes_via_extract(archive: &Path, member: &str) -> Vec<u8> {
         "ex-check",
         &AtomicBool::new(false),
         Some(&[member.to_string()]),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -203,6 +206,7 @@ fn s5_pack_copy_faster_than_stream_rebuild_when_measurable() {
         "product-pack-copy-bench",
         &AtomicBool::new(false),
         |_| {},
+        None,
         &Default::default(),
     )
     .unwrap();

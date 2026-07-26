@@ -13,7 +13,7 @@ fn tests_valid_zip_entries() {
     );
 
     let cancelled = AtomicBool::new(false);
-    let summary = test_archive(&zip_path, "test-1", &cancelled, |_| {}).unwrap();
+    let summary = test_archive(&zip_path, "test-1", &cancelled, None, |_| {}).unwrap();
 
     assert_eq!(summary.total_entries, 2);
     assert_eq!(summary.tested_ok, 2);
@@ -39,7 +39,7 @@ fn cancel_mid_test_returns_cancelled() {
     );
 
     let cancelled = AtomicBool::new(true);
-    let error = test_archive(&zip_path, "test-2", &cancelled, |_| {}).unwrap_err();
+    let error = test_archive(&zip_path, "test-2", &cancelled, None, |_| {}).unwrap_err();
     assert_eq!(error.code, "cancelled");
 
     std::fs::remove_dir_all(root).unwrap();
@@ -57,7 +57,7 @@ fn cancel_flag_can_be_set_during_progress() {
 
     let cancelled = AtomicBool::new(false);
     let flag = &cancelled;
-    let error = test_archive(&zip_path, "test-3", &cancelled, move |_| {
+    let error = test_archive(&zip_path, "test-3", &cancelled, None, move |_| {
         flag.store(true, Ordering::Relaxed);
     })
     .unwrap_err();

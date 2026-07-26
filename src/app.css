@@ -1173,6 +1173,19 @@ html, body {
   padding: 0.25rem 0.4rem;
   font-family: var(--font-mono);
 }
+.create-input {
+  width: 100%;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  font-family: var(--font-mono);
+}
+.create-warn {
+  color: #e0a040;
+  opacity: 1;
+}
 .create-check {
   display: flex;
   align-items: center;

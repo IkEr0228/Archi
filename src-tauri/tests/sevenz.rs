@@ -1,6 +1,7 @@
 mod common;
 
 use archi_backend_lib::archive::open_archive;
+use sevenz_rust2::Password;
 use archi_backend_lib::extraction::{extract_any, FailOnConflict};
 use archi_backend_lib::format_detect::{detect_format, ArchiveFormat};
 use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions};
@@ -24,18 +25,20 @@ fn create_open_extract_sevenz_round_trip() {
         &out,
         "7z-1",
         &AtomicBool::new(false),
+        Password::empty(),
         &CreateOptions {
             format: CreateFormat::SevenZ,
             compression: CompressionPreset::Max,
             include_root: true,
             overwrite: false,
+            password: None,
         },
         |_| {},
     )
     .unwrap();
 
     assert_eq!(detect_format(&out).unwrap(), ArchiveFormat::SevenZ);
-    let info = open_archive(&out).unwrap();
+    let info = open_archive(&out, None).unwrap();
     assert_eq!(info.format, "7z");
     assert!(info.capabilities.extract);
     assert!(info.capabilities.edit);
@@ -46,6 +49,7 @@ fn create_open_extract_sevenz_round_trip() {
         &dest,
         "ex-7z",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -77,11 +81,13 @@ fn extract_sevenz_materializes_empty_directory() {
         &out,
         "7z-empty",
         &AtomicBool::new(false),
+        Password::empty(),
         &CreateOptions {
             format: CreateFormat::SevenZ,
             compression: CompressionPreset::Fast,
             include_root: true,
             overwrite: false,
+            password: None,
         },
         |_| {},
     )
@@ -92,6 +98,7 @@ fn extract_sevenz_materializes_empty_directory() {
         &dest,
         "ex-7z-empty",
         &AtomicBool::new(false),
+        None,
         None,
         &FailOnConflict,
         |_| {},
@@ -121,11 +128,13 @@ fn extract_sevenz_selected_file_only() {
         &out,
         "7z-sel-f",
         &AtomicBool::new(false),
+        Password::empty(),
         &CreateOptions {
             format: CreateFormat::SevenZ,
             compression: CompressionPreset::Fast,
             include_root: true,
             overwrite: false,
+            password: None,
         },
         |_| {},
     )
@@ -138,6 +147,7 @@ fn extract_sevenz_selected_file_only() {
         "ex-7z-sel-file",
         &AtomicBool::new(false),
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -169,11 +179,13 @@ fn extract_sevenz_selected_directory_recursively() {
         &out,
         "7z-sel-d",
         &AtomicBool::new(false),
+        Password::empty(),
         &CreateOptions {
             format: CreateFormat::SevenZ,
             compression: CompressionPreset::Fast,
             include_root: true,
             overwrite: false,
+            password: None,
         },
         |_| {},
     )
@@ -186,6 +198,7 @@ fn extract_sevenz_selected_directory_recursively() {
         "ex-7z-sel-dir",
         &AtomicBool::new(false),
         Some(&selected),
+        None,
         &FailOnConflict,
         |_| {},
     )
@@ -218,11 +231,13 @@ fn sevenz_max_shrinks_text() {
         &out,
         "7z-max",
         &AtomicBool::new(false),
+        Password::empty(),
         &CreateOptions {
             format: CreateFormat::SevenZ,
             compression: CompressionPreset::Max,
             include_root: true,
             overwrite: true,
+            password: None,
         },
         |_| {},
     )
@@ -232,7 +247,7 @@ fn sevenz_max_shrinks_text() {
         packed < raw / 10,
         "expected strong LZMA2 shrink: packed {packed} vs raw {raw}"
     );
-    let info = open_archive(&out).unwrap();
+    let info = open_archive(&out, None).unwrap();
     assert_eq!(info.stats.total_compressed, packed);
     assert!(info.stats.total_uncompressed >= raw);
     assert!(info.stats.total_compressed < info.stats.total_uncompressed);
@@ -251,15 +266,64 @@ fn sevenz_rejects_output_inside_source() {
         &out,
         "bad",
         &AtomicBool::new(false),
+        Password::empty(),
         &CreateOptions {
             format: CreateFormat::SevenZ,
             compression: CompressionPreset::Fast,
             include_root: true,
             overwrite: false,
+            password: None,
         },
         |_| {},
     )
     .unwrap_err();
     assert_eq!(err.code, "output_inside_source");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn create_extract_sevenz_with_password_roundtrip() {
+    let root = common::temp_dir("7z-pass-rt");
+    let src = root.join("a.txt");
+    fs::write(&src, b"super secret").unwrap();
+    let out = root.join("pass.7z");
+    let password = "testpass123";
+    create_sevenz_archive(
+        &[src.to_string_lossy().into_owned()],
+        &out,
+        "7z-pass",
+        &AtomicBool::new(false),
+        Password::new(password),
+        &CreateOptions {
+            format: CreateFormat::SevenZ,
+            compression: CompressionPreset::Normal,
+            include_root: true,
+            overwrite: true,
+            password: Some(password.to_string()),
+        },
+        |_| {},
+    )
+    .unwrap();
+
+    let info = open_archive(&out, Some(password.to_string())).unwrap();
+    assert_eq!(info.format, "7z");
+
+    let dest = root.join("extracted");
+    fs::create_dir(&dest).unwrap();
+    extract_any(
+        &out,
+        &dest,
+        "ex-pass",
+        &AtomicBool::new(false),
+        None,
+        Some(password.to_string()),
+        &FailOnConflict,
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read(dest.join("a.txt")).unwrap(),
+        b"super secret"
+    );
     fs::remove_dir_all(root).unwrap();
 }
