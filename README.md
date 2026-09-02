@@ -2,7 +2,7 @@
 
 **Windows archive manager** — open, browse, extract, create, test, and edit archives with a focus on **safe extraction** and a modern desktop UI.
 
-Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https://svelte.dev/). Companion spirit to the Niti file manager; this repository is self-contained.
+Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https://svelte.dev/).
 
 [![CI](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml/badge.svg)](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml)
 
