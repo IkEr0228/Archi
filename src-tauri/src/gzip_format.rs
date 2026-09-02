@@ -284,7 +284,7 @@ pub fn extract_gzip(
         #[cfg(windows)]
         {
             let mut created = Vec::new();
-            let mut dir_cache = std::collections::HashMap::new();
+            let mut dir_cache = ahash::AHashMap::new();
             let root = Directory::open_root(&destination).map_err(|error| {
                 gzip_error(
                     "unsafe_destination",

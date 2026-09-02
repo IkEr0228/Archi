@@ -20,7 +20,8 @@ use crate::security::{
 use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory};
 use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
-use std::collections::{BTreeSet, HashMap};
+use ahash::AHashMap;
+use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -95,7 +96,7 @@ pub fn open_sevenz(path: &Path, password: Password) -> Result<ArchiveInfo, Comma
     // Virtual parents roughly double entry count in deep trees; reserve modestly.
     let reserve = archive.files.len().saturating_mul(2).max(16);
     let mut entries: Vec<ArchiveEntry> = Vec::with_capacity(reserve);
-    let mut entry_indices: HashMap<String, usize> = HashMap::with_capacity(reserve);
+    let mut entry_indices: AHashMap<String, usize> = AHashMap::with_capacity(reserve);
     let mut total_uncompressed: u64 = 0;
     let mut total_compressed_members: u64 = 0;
     let mut largest_entry: u64 = 0;
@@ -309,11 +310,11 @@ pub fn extract_sevenz(
     #[cfg(windows)]
     let mut created = Vec::new();
     #[cfg(windows)]
-    let mut dir_cache = HashMap::new();
+    let mut dir_cache = AHashMap::new();
     #[cfg(not(windows))]
     let mut created: Vec<()> = Vec::new();
     #[cfg(not(windows))]
-    let mut dir_cache: HashMap<PathBuf, ()> = HashMap::new();
+    let mut dir_cache: AHashMap<PathBuf, ()> = AHashMap::new();
 
     // Open destination root once per extract (mirrors ZIP extract_windows).
     #[cfg(windows)]
@@ -496,7 +497,7 @@ fn write_extracted_file(
     cancelled: &AtomicBool,
     conflict_resolver: &dyn ConflictResolver,
     created: &mut Vec<crate::windows_fs::CreatedEntry>,
-    dir_cache: &mut HashMap<PathBuf, Directory>,
+    dir_cache: &mut AHashMap<PathBuf, Directory>,
 ) -> Result<bool, CommandError> {
     use std::os::windows::ffi::OsStrExt;
 
@@ -634,7 +635,7 @@ fn write_extracted_file(
     cancelled: &AtomicBool,
     conflict_resolver: &dyn ConflictResolver,
     _created: &mut Vec<()>,
-    _dir_cache: &mut HashMap<PathBuf, ()>,
+    _dir_cache: &mut AHashMap<PathBuf, ()>,
 ) -> Result<bool, CommandError> {
     let mut write_to = destination.to_path_buf();
     if write_to.exists() {

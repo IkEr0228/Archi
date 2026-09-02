@@ -16,7 +16,7 @@ use sevenz_rust2::{
     Archive, ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, EncoderMethod, Password,
     SIGNATURE_HEADER_SIZE,
 };
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -407,8 +407,8 @@ pub fn pack_stream_rebuild(
     })?;
 
     let slots = build_pack_slots(&archive)?;
-    let mut slot_by_path: HashMap<String, &PackSlot> = HashMap::new();
-    let mut entry_by_path: HashMap<String, &SzEntry> = HashMap::new();
+    let mut slot_by_path: AHashMap<String, &PackSlot> = AHashMap::new();
+    let mut entry_by_path: AHashMap<String, &SzEntry> = AHashMap::new();
     for file in &archive.files {
         if file.is_anti_item {
             continue;
@@ -753,7 +753,7 @@ pub fn pack_copy_delete_to_temp_only(
         )
     })?;
     let slots = build_pack_slots(&archive)?;
-    let slot_by_file: HashMap<usize, &PackSlot> = slots.iter().map(|s| (s.file_index, s)).collect();
+    let slot_by_file: AHashMap<usize, &PackSlot> = slots.iter().map(|s| (s.file_index, s)).collect();
 
     let mut keep: Vec<usize> = Vec::new();
     let mut matched = false;

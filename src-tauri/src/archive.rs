@@ -6,8 +6,9 @@ use crate::security::{assess_archive, validate_entry_path, ArchiveRiskInput};
 use crate::sevenz_format::open_sevenz;
 use crate::tar_format::{open_tar, open_tar_bz2, open_tar_gz, open_tar_xz};
 use crate::xz_format::open_xz;
+use ahash::AHashMap;
 use sevenz_rust2::Password;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::Path;
 use zip::ZipArchive;
@@ -71,7 +72,7 @@ fn open_zip_archive(path: &Path, _password: Option<&str>) -> Result<ArchiveInfo,
     // Virtual parents roughly double entry count in deep trees; reserve modestly.
     let reserve = zip_len.saturating_mul(2).max(16);
     let mut entries: Vec<ArchiveEntry> = Vec::with_capacity(reserve);
-    let mut entry_indices: HashMap<String, usize> = HashMap::with_capacity(reserve);
+    let mut entry_indices: AHashMap<String, usize> = AHashMap::with_capacity(reserve);
     let mut total_uncompressed: u64 = 0;
     let mut total_compressed: u64 = 0;
     let mut largest_entry: u64 = 0;

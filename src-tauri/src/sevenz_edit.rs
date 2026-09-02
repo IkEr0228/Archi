@@ -18,7 +18,8 @@ use crate::sevenz_pack_copy::{
 };
 use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
-use std::collections::{HashMap, HashSet};
+use ahash::AHashMap;
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -890,7 +891,7 @@ fn stream_rebuild(
     }
 
     // source path → (out_path, is_dir) for kept/renamed members.
-    let mut keep_map: HashMap<String, (String, bool)> = HashMap::new();
+    let mut keep_map: AHashMap<String, (String, bool)> = AHashMap::new();
     let mut new_members: Vec<&RebuildMember> = Vec::new();
     for member in planned {
         match member {

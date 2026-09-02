@@ -253,7 +253,7 @@ pub fn extract_xz(
         #[cfg(windows)]
         {
             let mut created = Vec::new();
-            let mut dir_cache = std::collections::HashMap::new();
+            let mut dir_cache = ahash::AHashMap::new();
             let root = Directory::open_root(&destination).map_err(|error| {
                 xz_error(
                     "unsafe_destination",

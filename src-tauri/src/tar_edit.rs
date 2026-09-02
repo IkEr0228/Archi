@@ -16,7 +16,8 @@ use bzip2::Compression as BzCompression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression as GzCompression;
-use std::collections::{HashMap, HashSet};
+use ahash::AHashMap;
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -1050,7 +1051,7 @@ fn write_copied_entry<W: Write, R: Read>(
 fn process_entries_into<W: Write, R: Read>(
     archive: &mut Archive<R>,
     builder: &mut Builder<W>,
-    keep_map: &HashMap<String, (String, bool)>,
+    keep_map: &AHashMap<String, (String, bool)>,
     new_members: &[&RebuildMember],
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -1245,7 +1246,7 @@ fn stream_rebuild(
         return Err(cancelled_error());
     }
 
-    let mut keep_map: HashMap<String, (String, bool)> = HashMap::new();
+    let mut keep_map: AHashMap<String, (String, bool)> = AHashMap::new();
     let mut new_members: Vec<&RebuildMember> = Vec::new();
     for member in planned {
         match member {

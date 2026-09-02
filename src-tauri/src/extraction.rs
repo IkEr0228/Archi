@@ -315,7 +315,7 @@ fn extract_windows(
     })?;
     let total_files = plans.len() as u64;
     let mut created = Vec::new();
-    let mut dir_cache = std::collections::HashMap::new();
+    let mut dir_cache = ahash::AHashMap::new();
     let mut extracted_files = 0_u64;
     let mut skipped_files = 0_u64;
     let mut last_progress = Instant::now() - PROGRESS_INTERVAL;

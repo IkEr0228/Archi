@@ -260,7 +260,7 @@ pub fn extract_bzip2(
         #[cfg(windows)]
         {
             let mut created = Vec::new();
-            let mut dir_cache = std::collections::HashMap::new();
+            let mut dir_cache = ahash::AHashMap::new();
             let root = Directory::open_root(&destination).map_err(|error| {
                 bzip2_error(
                     "unsafe_destination",

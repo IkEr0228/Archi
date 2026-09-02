@@ -7,6 +7,7 @@ use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
 use std::path::{Component, Path, PathBuf, PrefixComponent};
 use std::sync::Arc;
+use ahash::AHashMap;
 
 const OBJ_CASE_INSENSITIVE: u32 = 0x40;
 const OBJ_DONT_REPARSE: u32 = 0x1000;
@@ -172,7 +173,7 @@ impl Directory {
         root: &Path,
         destination: &Path,
         created: &mut Vec<CreatedEntry>,
-        cache: &mut std::collections::HashMap<PathBuf, Self>,
+        cache: &mut AHashMap<PathBuf, Self>,
     ) -> io::Result<Self> {
         let parent = destination.parent().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "Archive entry has no parent.")
@@ -218,7 +219,7 @@ impl Directory {
         root: &Path,
         directory_path: &Path,
         created: &mut Vec<CreatedEntry>,
-        cache: &mut std::collections::HashMap<PathBuf, Self>,
+        cache: &mut AHashMap<PathBuf, Self>,
     ) -> io::Result<Self> {
         let relative = directory_path.strip_prefix(root).map_err(|_| {
             io::Error::new(
@@ -610,7 +611,7 @@ mod tests {
         let destination = root.join("nested").join("file.bin");
         let directory = Directory::open_root(&root).unwrap();
         let mut created = Vec::new();
-        let mut cache = std::collections::HashMap::new();
+        let mut cache = AHashMap::new();
         let parent = directory
             .parent_for(&root, &destination, &mut created, &mut cache)
             .unwrap();
@@ -651,7 +652,7 @@ mod tests {
 
         let directory = Directory::open_root(&root).unwrap();
         let mut created = Vec::new();
-        let mut cache = std::collections::HashMap::new();
+        let mut cache = AHashMap::new();
         let parent = directory
             .parent_for(&root, &second.join("file.bin"), &mut created, &mut cache)
             .unwrap();

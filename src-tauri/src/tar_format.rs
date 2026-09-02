@@ -17,7 +17,8 @@ use crate::security::{
 use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory};
 use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
-use std::collections::{BTreeSet, HashMap};
+use ahash::AHashMap;
+use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -135,7 +136,7 @@ fn build_archive_info(
     // Virtual parents roughly double entry count in deep trees; reserve modestly.
     let reserve = members.len().saturating_mul(2).max(16);
     let mut entries: Vec<ArchiveEntry> = Vec::with_capacity(reserve);
-    let mut entry_indices: HashMap<String, usize> = HashMap::with_capacity(reserve);
+    let mut entry_indices: AHashMap<String, usize> = AHashMap::with_capacity(reserve);
     let mut total_uncompressed: u64 = 0;
     let mut largest_entry: u64 = 0;
     let mut deepest_path = 0_usize;
@@ -362,7 +363,7 @@ fn extract_one_file_windows(
     cancelled: &AtomicBool,
     conflict_resolver: &dyn ConflictResolver,
     created: &mut Vec<crate::windows_fs::CreatedEntry>,
-    dir_cache: &mut std::collections::HashMap<PathBuf, Directory>,
+    dir_cache: &mut AHashMap<PathBuf, Directory>,
 ) -> Result<bool, CommandError> {
     use std::os::windows::ffi::OsStrExt;
 
@@ -510,7 +511,7 @@ fn extract_one_file_windows(
     cancelled: &AtomicBool,
     conflict_resolver: &dyn ConflictResolver,
     _created: &mut Vec<()>,
-    _dir_cache: &mut std::collections::HashMap<PathBuf, ()>,
+    _dir_cache: &mut AHashMap<PathBuf, ()>,
 ) -> Result<bool, CommandError> {
     let mut write_to = destination.to_path_buf();
     if write_to.exists() {
@@ -658,11 +659,11 @@ fn extract_tar_reader<R: Read>(
     #[cfg(windows)]
     let mut created = Vec::new();
     #[cfg(windows)]
-    let mut dir_cache = std::collections::HashMap::new();
+    let mut dir_cache = AHashMap::new();
     #[cfg(not(windows))]
     let mut created = Vec::new();
     #[cfg(not(windows))]
-    let mut dir_cache = std::collections::HashMap::new();
+    let mut dir_cache: AHashMap<PathBuf, ()> = AHashMap::new();
 
     // Open destination root once per extract (mirrors ZIP extract_windows).
     #[cfg(windows)]
