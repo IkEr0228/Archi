@@ -37,6 +37,9 @@ winreg = "0.55"
 mimalloc = { version = "0.1", default-features = false }
 ahash = { version = "0.8", default-features = false, features = ["std"] }
 
+[dev-dependencies]
+serde_json = "1.0"
+
 # Desktop release: speed + smaller binary.
 [profile.release]
 codegen-units = 1
