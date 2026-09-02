@@ -34,6 +34,7 @@ test('isArchivePath detects supported open extensions', () => {
   assert.equal(isArchivePath('a.txz'), true);
   assert.equal(isArchivePath('a.xz'), true);
   assert.equal(isArchivePath('a.7z'), true);
+  assert.equal(isArchivePath('a.rar'), true);
   assert.equal(isArchivePath('a.txt'), false);
   assert.equal(isArchivePath(''), false);
 });

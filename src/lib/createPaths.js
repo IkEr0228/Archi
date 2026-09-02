@@ -34,7 +34,8 @@ export function isArchivePath(path) {
     base.endsWith('.tar.xz') ||
     base.endsWith('.txz') ||
     base.endsWith('.xz') ||
-    base.endsWith('.7z')
+    base.endsWith('.7z') ||
+    base.endsWith('.rar')
   );
 }
 

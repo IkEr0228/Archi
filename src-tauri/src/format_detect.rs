@@ -15,6 +15,7 @@ pub enum ArchiveFormat {
     TarXz,
     Xz,
     SevenZ,
+    Rar,
 }
 
 impl ArchiveFormat {
@@ -29,6 +30,7 @@ impl ArchiveFormat {
             Self::TarXz => "tar.xz",
             Self::Xz => "xz",
             Self::SevenZ => "7z",
+            Self::Rar => "rar",
         }
     }
 }
@@ -80,6 +82,11 @@ fn looks_like_xz(prefix: &[u8]) -> bool {
 /// 7z signature: "7z" BC AF 27 1C
 fn looks_like_sevenz(prefix: &[u8]) -> bool {
     prefix.len() >= 6 && prefix.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C])
+}
+
+/// RAR signature: "Rar!" 0x1A 0x07 (common to RAR 1.5-4.x and RAR 5.0+)
+fn looks_like_rar(prefix: &[u8]) -> bool {
+    prefix.len() >= 6 && prefix.starts_with(b"Rar!\x1a\x07")
 }
 
 /// POSIX/ustar magic at header offset 257, or empty block start of classic tar.
@@ -218,6 +225,10 @@ pub fn detect_format(path: &Path) -> Result<ArchiveFormat, CommandError> {
 
     if looks_like_sevenz(&prefix) {
         return Ok(ArchiveFormat::SevenZ);
+    }
+
+    if looks_like_rar(&prefix) {
+        return Ok(ArchiveFormat::Rar);
     }
 
     if looks_like_gzip(&prefix) {
@@ -418,6 +429,22 @@ mod tests {
         zip.finish().unwrap();
 
         assert_eq!(detect_format(&path).unwrap(), ArchiveFormat::Zip);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detects_rar_signatures() {
+        let root = temp_dir("rar");
+        // RAR 4.x magic
+        let path4 = root.join("test4.rar");
+        std::fs::write(&path4, b"Rar!\x1a\x07\x00extra data").unwrap();
+        assert_eq!(detect_format(&path4).unwrap(), ArchiveFormat::Rar);
+
+        // RAR 5.0 magic
+        let path5 = root.join("test5.rar");
+        std::fs::write(&path5, b"Rar!\x1a\x07\x01\x00extra data").unwrap();
+        assert_eq!(detect_format(&path5).unwrap(), ArchiveFormat::Rar);
+
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -2,6 +2,7 @@ use crate::bzip2_format::open_bzip2;
 use crate::format_detect::{detect_format, ArchiveFormat};
 use crate::gzip_format::open_gzip;
 use crate::models::{ArchiveCapabilities, ArchiveEntry, ArchiveInfo, ArchiveStats, CommandError};
+use crate::rar_format::open_rar;
 use crate::security::{assess_archive, validate_entry_path, ArchiveRiskInput};
 use crate::sevenz_format::open_sevenz;
 use crate::tar_format::{open_tar, open_tar_bz2, open_tar_gz, open_tar_xz};
@@ -38,6 +39,7 @@ pub fn open_archive(path: &Path, password: Option<String>) -> Result<ArchiveInfo
             };
             open_sevenz(path, password)
         }
+        ArchiveFormat::Rar => open_rar(path, password.as_deref()),
     }
 }
 

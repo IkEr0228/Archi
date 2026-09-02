@@ -13,6 +13,7 @@ pub mod gzip_format;
 pub mod io_perf;
 pub mod models;
 pub mod operations;
+pub mod rar_format;
 pub mod security;
 pub mod sevenz_edit;
 pub mod sevenz_format;

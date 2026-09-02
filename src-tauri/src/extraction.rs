@@ -7,6 +7,7 @@ use crate::models::{CommandError, ConflictDecision, OperationProgress, Operation
 use crate::security::{
     destination_path_error_code, is_link_or_reparse_point, safe_destination_path_under_canonical,
 };
+use crate::rar_format::extract_rar;
 use crate::sevenz_format::extract_sevenz;
 use crate::tar_format::{extract_tar, extract_tar_bz2, extract_tar_gz, extract_tar_xz};
 #[cfg(windows)]
@@ -631,6 +632,16 @@ pub fn extract_any(
             emit,
         ),
         ArchiveFormat::SevenZ => extract_sevenz(
+            archive_path,
+            destination,
+            operation_id,
+            cancelled,
+            selected_paths,
+            conflict_resolver,
+            password,
+            emit,
+        ),
+        ArchiveFormat::Rar => extract_rar(
             archive_path,
             destination,
             operation_id,

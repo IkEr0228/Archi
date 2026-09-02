@@ -10,7 +10,7 @@ use std::path::PathBuf;
 /// Extensions Archi can open (Windows associates the final segment; multi-dot
 /// names like `.tar.gz` are covered by `.gz` + content detection).
 pub const ASSOCIATED_EXTENSIONS: &[&str] = &[
-    "zip", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "7z",
+    "zip", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "7z", "rar",
 ];
 
 const PROGID: &str = "Archi.Archive";

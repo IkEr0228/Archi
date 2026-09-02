@@ -61,6 +61,9 @@ pub fn test_archive(
         }
         ArchiveFormat::Xz => test_single_stream_xz(archive_path, operation_id, cancelled, emit),
         ArchiveFormat::SevenZ => test_sevenz(archive_path, operation_id, cancelled, password, emit),
+        ArchiveFormat::Rar => {
+            Err(test_error("unsupported_format", "Archive testing is not supported for RAR archives."))
+        }
     }
 }
 
