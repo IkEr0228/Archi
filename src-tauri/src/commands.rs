@@ -735,16 +735,9 @@ pub async fn start_drag_out(
         return Ok(());
     }
 
-    // Abort if the user is no longer holding the mouse button down:
-    if !crate::drag_out::is_lbutton_pressed() {
-        let _ = std::fs::remove_dir_all(&temp_dir);
-        return Ok(());
-    }
-
     let (tx, rx) = std::sync::mpsc::channel();
     app.run_on_main_thread(move || {
-        // Double-check mouse button state on main thread before entering modal loop:
-        if !crate::drag_out::is_lbutton_pressed() {
+        if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) != session_id {
             let _ = tx.send(Ok(()));
             return;
         }

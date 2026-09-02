@@ -384,9 +384,6 @@
     window.removeEventListener('pointerup', onPointerUpDuringDrag);
     window.removeEventListener('pointercancel', onPointerCancelDuringDrag);
     window.removeEventListener('keydown', onKeyDownDuringDrag);
-    if (onCancelDragOut) {
-      onCancelDragOut();
-    }
     clearInternalDrag();
     suppressClickAfterDrag = false;
   }
@@ -410,6 +407,10 @@
     // Only primary button; ignore modifier multi-select gestures for drag start.
     if (e.button !== 0) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+    if (onCancelDragOut) {
+      onCancelDragOut();
+    }
 
     const entry = visibleEntries[index];
     if (!entry) return;
