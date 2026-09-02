@@ -36,6 +36,7 @@
     onSelectionChange,
     onMoveEntries,
     onDragOut,
+    onPrepareDragOut,
     onCancelDragOut
   } = $props<{
     visibleEntries: ArchiveEntry[];
@@ -56,6 +57,8 @@
     onMoveEntries?: (sources: string[], destFolder: string) => void;
     /** Drag selected sources out of the archive into external applications. */
     onDragOut?: (sources: string[]) => void;
+    /** Speculatively prepare drag-out files on pointerdown. */
+    onPrepareDragOut?: (sources: string[]) => void;
     /** Cancel an in-flight native drag extraction if released inside archive. */
     onCancelDragOut?: () => void;
   }>();
@@ -329,6 +332,18 @@
       }
     }
 
+    const isOutsideWindow =
+      e.clientX < 0 ||
+      e.clientY < 0 ||
+      e.clientX >= window.innerWidth ||
+      e.clientY >= window.innerHeight;
+
+    if (isOutsideWindow && typeof document !== 'undefined') {
+      document.body.classList.remove('is-dragging-entry');
+    } else if (isInternalDragging && typeof document !== 'undefined') {
+      document.body.classList.add('is-dragging-entry');
+    }
+
     const sources = activeDragSources;
     if (!sources?.length) return;
 
@@ -368,6 +383,8 @@
         onCancelDragOut();
       }
       onMoveEntries(sources, dest);
+    } else if (!didDrag && onCancelDragOut) {
+      onCancelDragOut();
     }
 
     // Allow the next click cycle to run after a short delay if we dragged.
@@ -415,14 +432,20 @@
     const entry = visibleEntries[index];
     if (!entry) return;
 
+    const sources = resolveDragSources(index, entry.path as string);
+
     pendingDrag = {
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       index,
       path: entry.path as string,
-      sources: null
+      sources
     };
+
+    if (onPrepareDragOut && sources?.length) {
+      onPrepareDragOut(sources);
+    }
 
     window.addEventListener('pointermove', onPointerMoveDuringDrag);
     window.addEventListener('pointerup', onPointerUpDuringDrag);

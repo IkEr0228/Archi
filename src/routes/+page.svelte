@@ -1246,6 +1246,15 @@
 
   let isDragOutRunning = false;
 
+  function handlePrepareDragOut(sources: string[]) {
+    if (!isArchiveOpen || !currentArchivePath || !sources.length || activeOperation || isDragOutRunning) return;
+    invoke('prepare_drag_out', {
+      archivePath: currentArchivePath,
+      selectedPaths: sources,
+      password: archivePassword
+    }).catch(() => {});
+  }
+
   function handleCancelDragOut() {
     invoke('cancel_drag_out').catch(() => {});
     activeDragOutSources = null;
@@ -1462,6 +1471,7 @@
         onSelectionChange={handleSelectionChange}
         onMoveEntries={handleMoveEntries}
         onDragOut={handleDragOut}
+        onPrepareDragOut={handlePrepareDragOut}
         onCancelDragOut={handleCancelDragOut}
       />
     {:else}

@@ -705,11 +705,64 @@ pub fn unregister_file_associations_command() -> Result<FileAssociationStatus, C
 }
 
 static DRAG_SESSION_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static DRAG_ICON_BYTES: &[u8] = include_bytes!("../icons/32x32.png");
+
+struct PreparedDrag {
+    session_id: u64,
+    archive_path: String,
+    selected_paths: Vec<String>,
+    temp_dir: std::path::PathBuf,
+    disk_paths: Vec<std::path::PathBuf>,
+}
+
+static PREPARED_DRAG: std::sync::Mutex<Option<PreparedDrag>> = std::sync::Mutex::new(None);
 
 /// Cancel any in-flight drag-out extraction or pending modal drag.
 #[command]
 pub fn cancel_drag_out() {
     DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    if let Ok(mut lock) = PREPARED_DRAG.lock() {
+        if let Some(p) = lock.take() {
+            let _ = std::fs::remove_dir_all(&p.temp_dir);
+        }
+    }
+}
+
+/// Pre-stages drag-out files in the background on pointerdown so they are ready immediately on drag.
+#[command]
+pub async fn prepare_drag_out(
+    archive_path: String,
+    selected_paths: Vec<String>,
+    password: Option<String>,
+) -> Result<(), CommandError> {
+    let session_id = DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
+    let archive_path_clone = archive_path.clone();
+    let selected_paths_clone = selected_paths.clone();
+
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        crate::drag_out::stage_drag_files(Path::new(&archive_path_clone), &selected_paths_clone, password)
+    })
+    .await
+    .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
+
+    if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) == session_id {
+        let mut lock = PREPARED_DRAG.lock().unwrap();
+        if let Some(old) = lock.take() {
+            let _ = std::fs::remove_dir_all(&old.temp_dir);
+        }
+        *lock = Some(PreparedDrag {
+            session_id,
+            archive_path,
+            selected_paths,
+            temp_dir: res.0,
+            disk_paths: res.1,
+        });
+    } else {
+        let _ = std::fs::remove_dir_all(&res.0);
+    }
+
+    Ok(())
 }
 
 /// Extract selected archive entries to temporary staging and start native drag operation on main thread.
@@ -721,13 +774,32 @@ pub async fn start_drag_out(
     selected_paths: Vec<String>,
     password: Option<String>,
 ) -> Result<(), CommandError> {
-    let session_id = DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    // Check if we already have a prepared staging for these exact files:
+    let prepared = {
+        let mut lock = PREPARED_DRAG.lock().unwrap();
+        if let Some(p) = lock.take() {
+            if p.archive_path == archive_path && p.selected_paths == selected_paths {
+                Some(p)
+            } else {
+                let _ = std::fs::remove_dir_all(&p.temp_dir);
+                None
+            }
+        } else {
+            None
+        }
+    };
 
-    let (temp_dir, disk_paths) = tauri::async_runtime::spawn_blocking(move || {
-        crate::drag_out::stage_drag_files(Path::new(&archive_path), &selected_paths, password)
-    })
-    .await
-    .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
+    let (temp_dir, disk_paths, session_id) = if let Some(p) = prepared {
+        (p.temp_dir, p.disk_paths, p.session_id)
+    } else {
+        let session_id = DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let (t, d) = tauri::async_runtime::spawn_blocking(move || {
+            crate::drag_out::stage_drag_files(Path::new(&archive_path), &selected_paths, password)
+        })
+        .await
+        .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
+        (t, d, session_id)
+    };
 
     // Abort if cancelled or a newer drag operation was started while extracting:
     if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) != session_id {
@@ -745,7 +817,7 @@ pub async fn start_drag_out(
         let r = drag::start_drag(
             &window,
             drag::DragItem::Files(disk_paths),
-            drag::Image::Raw(vec![]),
+            drag::Image::Raw(DRAG_ICON_BYTES.to_vec()),
             |_res, _pos| {},
             drag::Options {
                 mode: drag::DragMode::Copy,
