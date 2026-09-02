@@ -1,6 +1,11 @@
 <script lang="ts">
   import DotIcon from './DotIcon.svelte';
   import { getVirtualRange } from '../lib/virtualization.js';
+  import {
+    folderUnderPoint,
+    isValidMoveDest,
+    setDropHighlight
+  } from '../lib/dropTarget.js';
 
   interface ArchiveEntry {
     path: string;
@@ -264,48 +269,11 @@
   );
   let showParentUpRow = $derived(!!parentDropPath);
 
-  /**
-   * Resolve drop folder under the pointer.
-   * Supports table folder rows, parent ".." row, breadcrumbs, and Up button
-   * via `[data-drop-folder]` (path or `/` for archive root).
-   */
-  function folderUnderPoint(clientX: number, clientY: number): string | null {
-    const el = document.elementFromPoint(clientX, clientY);
-    if (!el) return null;
-    const dropEl = el.closest('[data-drop-folder]') as HTMLElement | null;
-    if (dropEl?.dataset.dropFolder != null && dropEl.dataset.dropFolder !== '') {
-      return dropEl.dataset.dropFolder;
-    }
-    const row = el.closest('tr[data-entry-path]') as HTMLElement | null;
-    if (!row || row.dataset.isDir !== 'true') return null;
-    return row.dataset.entryPath ?? null;
-  }
-
-  function isValidMoveDest(sources: string[], dest: string): boolean {
-    // Root (`/` or '') is always a valid destination for move-out-of-folder.
-    if (!dest || dest === '/') return true;
-    return !sources.some((s) => dest === s || dest.startsWith(s + '/'));
-  }
-
-  /** Highlight table rows + external targets (breadcrumbs, Up) sharing data-drop-folder. */
-  function setDropHighlight(dest: string | null) {
-    dragOverFolder = dest;
-    if (typeof document === 'undefined') return;
-    for (const node of document.querySelectorAll('[data-drop-folder]')) {
-      const el = node as HTMLElement;
-      const path = el.dataset.dropFolder ?? '';
-      const match =
-        dest != null &&
-        (path === dest ||
-          ((dest === '/' || dest === '') && (path === '/' || path === '')));
-      el.classList.toggle('drop-folder', match);
-    }
-  }
-
   function clearInternalDrag() {
     pendingDrag = null;
     activeDragSources = null;
     isInternalDragging = false;
+    dragOverFolder = null;
     setDropHighlight(null);
   }
 
@@ -343,8 +311,10 @@
 
     const folder = folderUnderPoint(e.clientX, e.clientY);
     if (folder && isValidMoveDest(sources, folder)) {
+      dragOverFolder = folder;
       setDropHighlight(folder);
     } else {
+      dragOverFolder = null;
       setDropHighlight(null);
     }
   }
@@ -365,6 +335,7 @@
     clearInternalDrag();
 
     if (
+      !onDragOut &&
       didDrag &&
       sources?.length &&
       dest &&
