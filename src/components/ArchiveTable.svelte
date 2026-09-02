@@ -29,7 +29,8 @@
     onSortChange,
     onNavigate,
     onSelectionChange,
-    onMoveEntries
+    onMoveEntries,
+    onDragOut
   } = $props<{
     visibleEntries: ArchiveEntry[];
     archiveMode?: boolean;
@@ -47,6 +48,8 @@
     onSelectionChange: (paths: Set<string>) => void;
     /** Move sources into dest folder path (archive-relative; '' or '/' = root). */
     onMoveEntries?: (sources: string[], destFolder: string) => void;
+    /** Drag selected sources out of the archive into external applications. */
+    onDragOut?: (sources: string[]) => void;
   }>();
 
   let focusedIndex = $state(-1);
@@ -329,6 +332,10 @@
       activeDragSources = sources;
       isInternalDragging = true;
       suppressClickAfterDrag = true;
+
+      if (onDragOut && sources?.length) {
+        onDragOut(sources);
+      }
     }
 
     const sources = activeDragSources;
@@ -397,7 +404,7 @@
   }
 
   function handleRowPointerDown(e: PointerEvent, index: number) {
-    if (!canEdit || !onMoveEntries) return;
+    if (!canEdit && !onDragOut) return;
     // Only primary button; ignore modifier multi-select gestures for drag start.
     if (e.button !== 0) return;
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;

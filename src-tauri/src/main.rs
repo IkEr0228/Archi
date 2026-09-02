@@ -27,6 +27,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_drag::init())
         .manage(OperationRegistry::default())
         .manage(StartupCliPath(Mutex::new(None)))
         .setup(|app| {
@@ -37,6 +38,8 @@ fn main() {
             if let Ok(mut guard) = app.state::<StartupCliPath>().0.lock() {
                 *guard = path;
             }
+
+            archi_backend_lib::drag_out::cleanup_old_drag_temp_dirs();
 
             // Opaque window + no acrylic: fastest create/show path on Windows.
             if let Some(window) = app.get_webview_window("main") {
@@ -70,6 +73,7 @@ fn main() {
             commands::get_file_association_status_command,
             commands::register_file_associations_command,
             commands::unregister_file_associations_command,
+            commands::start_drag_out,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
