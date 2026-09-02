@@ -46,6 +46,6 @@ Contributors should treat these as non-negotiable (also in `docs/DEVELOPMENT.md`
 
 ## Out of scope (for now)
 
-- Encrypted / password-protected archives (no password UI yet)
-- RAR and other deferred formats
+- Encrypted / password-protected archives
+- RAR
 - Social engineering via archive contents after a *correct* extract
