@@ -237,6 +237,16 @@ extern "system" {
 }
 
 #[cfg(windows)]
+pub fn is_lbutton_pressed() -> bool {
+    unsafe { (GetAsyncKeyState(VK_LBUTTON) as u16 & 0x8000) != 0 }
+}
+
+#[cfg(not(windows))]
+pub fn is_lbutton_pressed() -> bool {
+    false
+}
+
+#[cfg(windows)]
 #[repr(C)]
 struct FileDataObject {
     vtbl: &'static IDataObjectVtbl,

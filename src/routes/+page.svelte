@@ -1244,12 +1244,22 @@
     );
   }
 
+  let isDragOutRunning = false;
+
+  function handleCancelDragOut() {
+    invoke('cancel_drag_out').catch(() => {});
+    activeDragOutSources = null;
+    lastDragOutSources = null;
+    isDragOutRunning = false;
+    setDropHighlight(null);
+  }
+
   /** Native drag-and-drop extraction from archive to external applications (Explorer, etc.). */
   async function handleDragOut(sources: string[]) {
-    if (!isArchiveOpen || !currentArchivePath || !sources.length || activeOperation) return;
+    if (!isArchiveOpen || !currentArchivePath || !sources.length || activeOperation || isDragOutRunning) return;
+    isDragOutRunning = true;
     activeDragOutSources = sources;
     lastDragOutSources = sources;
-    if (clearLastDragTimer) clearTimeout(clearLastDragTimer);
     try {
       await invoke('start_drag_out', {
         archivePath: currentArchivePath,
@@ -1272,10 +1282,9 @@
       }
     } finally {
       activeDragOutSources = null;
+      lastDragOutSources = null;
+      isDragOutRunning = false;
       setDropHighlight(null);
-      clearLastDragTimer = setTimeout(() => {
-        lastDragOutSources = null;
-      }, 1500);
     }
   }
 
@@ -1453,6 +1462,7 @@
         onSelectionChange={handleSelectionChange}
         onMoveEntries={handleMoveEntries}
         onDragOut={handleDragOut}
+        onCancelDragOut={handleCancelDragOut}
       />
     {:else}
       <EmptyStateComponent 

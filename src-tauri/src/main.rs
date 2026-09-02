@@ -77,6 +77,7 @@ fn main() {
             commands::register_file_associations_command,
             commands::unregister_file_associations_command,
             commands::start_drag_out,
+            commands::cancel_drag_out,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

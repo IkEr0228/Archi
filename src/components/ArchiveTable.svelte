@@ -35,7 +35,8 @@
     onNavigate,
     onSelectionChange,
     onMoveEntries,
-    onDragOut
+    onDragOut,
+    onCancelDragOut
   } = $props<{
     visibleEntries: ArchiveEntry[];
     archiveMode?: boolean;
@@ -55,6 +56,8 @@
     onMoveEntries?: (sources: string[], destFolder: string) => void;
     /** Drag selected sources out of the archive into external applications. */
     onDragOut?: (sources: string[]) => void;
+    /** Cancel an in-flight native drag extraction if released inside archive. */
+    onCancelDragOut?: () => void;
   }>();
 
   let focusedIndex = $state(-1);
@@ -80,8 +83,19 @@
     sources: string[] | null;
   };
   let pendingDrag: PendingDrag | null = null;
-  let activeDragSources: string[] | null = null;
+  let activeDragSources = $state<string[] | null>(null);
   let suppressClickAfterDrag = false;
+
+  let dragGhostX = $state(0);
+  let dragGhostY = $state(0);
+  let dragLabel = $derived.by(() => {
+    if (!activeDragSources || !activeDragSources.length) return '';
+    if (activeDragSources.length === 1) {
+      const p = activeDragSources[0];
+      return p.split('/').filter(Boolean).pop() || p;
+    }
+    return `${activeDragSources.length} items`;
+  });
 
   // Smaller overscan = fewer DOM nodes on weak GPUs (still smooth with rAF scroll).
   const OVERSCAN = 4;
@@ -275,11 +289,17 @@
     isInternalDragging = false;
     dragOverFolder = null;
     setDropHighlight(null);
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('is-dragging-entry');
+    }
   }
 
   function onPointerMoveDuringDrag(e: PointerEvent) {
     const pending = pendingDrag;
     if (!pending || e.pointerId !== pending.pointerId) return;
+
+    dragGhostX = e.clientX;
+    dragGhostY = e.clientY;
 
     if (!isInternalDragging) {
       const dx = e.clientX - pending.startX;
@@ -300,6 +320,9 @@
       activeDragSources = sources;
       isInternalDragging = true;
       suppressClickAfterDrag = true;
+      if (typeof document !== 'undefined') {
+        document.body.classList.add('is-dragging-entry');
+      }
 
       if (onDragOut && sources?.length) {
         onDragOut(sources);
@@ -335,13 +358,15 @@
     clearInternalDrag();
 
     if (
-      !onDragOut &&
       didDrag &&
       sources?.length &&
       dest &&
       isValidMoveDest(sources, dest) &&
       onMoveEntries
     ) {
+      if (onCancelDragOut) {
+        onCancelDragOut();
+      }
       onMoveEntries(sources, dest);
     }
 
@@ -359,6 +384,9 @@
     window.removeEventListener('pointerup', onPointerUpDuringDrag);
     window.removeEventListener('pointercancel', onPointerCancelDuringDrag);
     window.removeEventListener('keydown', onKeyDownDuringDrag);
+    if (onCancelDragOut) {
+      onCancelDragOut();
+    }
     clearInternalDrag();
     suppressClickAfterDrag = false;
   }
@@ -370,6 +398,9 @@
     window.removeEventListener('pointerup', onPointerUpDuringDrag);
     window.removeEventListener('pointercancel', onPointerCancelDuringDrag);
     window.removeEventListener('keydown', onKeyDownDuringDrag);
+    if (onCancelDragOut) {
+      onCancelDragOut();
+    }
     clearInternalDrag();
     suppressClickAfterDrag = false;
   }
@@ -597,6 +628,23 @@
       {/if}
     </tbody>
   </table>
+
+  {#if isInternalDragging && activeDragSources && activeDragSources.length > 0}
+    <div
+      class="drag-ghost-badge"
+      style="left: {dragGhostX + 14}px; top: {dragGhostY + 14}px;"
+      aria-hidden="true"
+    >
+      <span class="ghost-icon">
+        {#if activeDragSources.length === 1}
+          📄
+        {:else}
+          📦
+        {/if}
+      </span>
+      <span class="ghost-label">{dragLabel}</span>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -657,5 +705,53 @@
   .parent-up-icon {
     font-size: 14px;
     opacity: 0.85;
+  }
+
+  .drag-ghost-badge {
+    position: fixed;
+    pointer-events: none;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: rgba(20, 20, 28, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 12px rgba(168, 230, 207, 0.25);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    user-select: none;
+    white-space: nowrap;
+    animation: ghost-fade 0.12s ease-out;
+  }
+
+  .ghost-icon {
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .ghost-label {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @keyframes ghost-fade {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  :global(body.is-dragging-entry) {
+    cursor: grabbing !important;
+    user-select: none !important;
+  }
+
+  :global(body.is-dragging-entry *) {
+    cursor: grabbing !important;
   }
 </style>

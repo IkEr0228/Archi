@@ -704,6 +704,14 @@ pub fn unregister_file_associations_command() -> Result<FileAssociationStatus, C
     unregister_file_associations()
 }
 
+static DRAG_SESSION_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Cancel any in-flight drag-out extraction or pending modal drag.
+#[command]
+pub fn cancel_drag_out() {
+    DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Extract selected archive entries to temporary staging and start native drag operation on main thread.
 #[command]
 pub async fn start_drag_out(
@@ -713,14 +721,34 @@ pub async fn start_drag_out(
     selected_paths: Vec<String>,
     password: Option<String>,
 ) -> Result<(), CommandError> {
+    let session_id = DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
     let (temp_dir, disk_paths) = tauri::async_runtime::spawn_blocking(move || {
         crate::drag_out::stage_drag_files(Path::new(&archive_path), &selected_paths, password)
     })
     .await
     .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
 
+    // Abort if cancelled or a newer drag operation was started while extracting:
+    if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) != session_id {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return Ok(());
+    }
+
+    // Abort if the user is no longer holding the mouse button down:
+    if !crate::drag_out::is_lbutton_pressed() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return Ok(());
+    }
+
     let (tx, rx) = std::sync::mpsc::channel();
     app.run_on_main_thread(move || {
+        // Double-check mouse button state on main thread before entering modal loop:
+        if !crate::drag_out::is_lbutton_pressed() {
+            let _ = tx.send(Ok(()));
+            return;
+        }
+
         let r = drag::start_drag(
             &window,
             drag::DragItem::Files(disk_paths),
