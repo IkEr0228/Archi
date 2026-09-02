@@ -14,12 +14,12 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 ## Features
 
-- **Multi-format open/list/extract:** ZIP, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
+- **Multi-format open/list/extract:** ZIP, RAR, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
 - **Encrypted archives:** open, extract, test, and create **AES-256** password-protected ZIP and 7z; password prompt with retry, session reuse for extract/test/edit
 - **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets; TAR family + password produces a real AES-256 `.7z`
 - **Edit:** add, folder, rename, delete, replace, **in-archive move** (drag into folders / up to parent / Root) — works on encrypted 7z too
 - **Fast edit paths:** ZIP append + logical delete; 7z non-solid **pack-copy** (no full Max recompress); TAR stream rebuild (no full work tree)
-- **Drag & Drop extraction:** drag files and folders directly out of the archive into Windows Explorer, Desktop, or external apps (with transparent AES-256 decrypt and background temp cleanup)
+- **Drag & Drop extraction:** drag files and folders directly out of the archive into Windows Explorer, Desktop, or external apps (with transparent AES-256 decrypt, speculative pre-staging, and background temp cleanup)
 - **Explorer drop & in-archive move:** drop files from Explorer into an open archive folder, drop archives to open / sources to create, or drag entries into internal folders / parent breadcrumbs
 - **Test:** all open formats — decompress/read integrity without writing user files (password-aware)
 - **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
@@ -34,6 +34,7 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **ZIP** | Yes | Yes | Yes | Yes | Yes | AES-256 | Stored + Deflate. Encrypted listing works without password; extract/test prompt. Edit: append add, logical/fast delete, stream rebuild rename/move. |
 | **7z** | Yes | Yes | Yes | Yes | Yes | AES-256 | LZMA/LZMA2. Password prompt on open when headers are encrypted. Edit: non-solid pack-copy (fallback stream rebuild / solid repack), encryption preserved. |
+| **RAR** | Yes | Yes | No | No | No | Password | RAR4 and RAR5 formats via static unrar library. Read and extract only (open-source licensing compliant). Password-protected archives supported. |
 | **TAR** | Yes | Yes | Yes | Yes | Yes | via .7z | Create = store. Edit = stream rebuild. Password request creates AES-256 7z instead. |
 | **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
 | **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |

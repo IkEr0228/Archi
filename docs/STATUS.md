@@ -1,8 +1,8 @@
 # Archi development status
 
-**Last updated:** 2026-09-02  
+**Last updated:** 2026-09-03  
 **Branch:** `master`  
-**Latest release:** **v0.2.2**  
+**Latest release:** **v0.3.0**  
 **License:** MIT (see root `LICENSE`)  
 **Repository:** https://github.com/IkEr0228/Archi
 
@@ -17,17 +17,19 @@
 | **Phase 4** | Incremental edit (ZIP append/logical delete, 7z pack-copy, TAR stream), in-archive DnD, Edit mode UI | **Done (v0.2.0)** |
 | **Phase 4.5** | Encrypted archives (AES-256 ZIP/7z), session password reuse | **Done (v0.2.1)** |
 | **Phase 5** | Native Drag-and-Drop extraction to Explorer/Desktop, unified internal/external DnD | **Done (v0.2.2)** |
+| **Phase 6** | Native RAR support (read/extract), engine optimizations (mimalloc, ahash, IPC payload), DnD performance | **Done (v0.3.0)** |
 
 ## What works today
 
-- **Drag-and-Drop:** drag files and folders directly out of the open archive into Windows Explorer, Desktop, or other apps (Windows OLE `CF_HDROP`, AES-256 decrypt, background cleanup); drop external files into the active virtual folder; drag entries into internal folders.
+- **Drag-and-Drop:** drag files and folders directly out of the open archive into Windows Explorer, Desktop, or other apps (Windows OLE `CF_HDROP`, speculative pre-staging on pointerdown, real 32x32 drag preview icon, AES-256 decrypt, background cleanup); drop external files into the active virtual folder; drag entries into internal folders.
+- **RAR support (read/extract):** open, list, search/filter/sort, and extract RAR4 and RAR5 archives via static official `unrar` library; encrypted archives with password prompt; read-only safety (in-archive editing disabled for license compliance).
 - **ZIP:** open, list, search/filter/sort, extract (modes + conflicts), create, test, properties, edit (append/logical delete/rebuild), in-archive DnD, Explorer drop-to-folder. Codecs: Stored + Deflate.
 - **Create formats (dropdown order):** ZIP, **7z**, TAR, TAR.GZ, TAR.BZ2, TAR.XZ (7z defaults to Max / LZMA2-9).
 - **TAR family + 7z:** open, list, extract, **test**, **edit** (stream rebuild / pack-copy / solid repack fallback). Single-stream gz/bz2/xz: open/list/extract/**test** only.
 - **Edit mode:** Auto / Fast / Compact toolbar control + Compact archive action.
 - **CLI:** `archi.exe path\to\archive`; single-instance forwards a second launch to the first process.
-- **File associations:** opt-in per-user (HKCU) via toolbar **Associations**.
-- **Not enabled:** RAR, single-stream create, ZPAQ.
+- **File associations:** opt-in per-user (HKCU) via toolbar **Associations** (includes RAR).
+- **Not enabled:** RAR creation/compression (proprietary/license prohibited), single-stream create, ZPAQ.
 
 ## Docs map
 
@@ -50,12 +52,12 @@ npm run tauri build
 Release Rust profile: `src-tauri/Cargo.toml` → `[profile.release]` (LTO, strip, opt-level 3, panic=abort).  
 Frontend: Vite production minify.
 
-**Last measured release build (2026-09-02, v0.2.2):**
+**Last measured release build (2026-09-03, v0.3.0):**
 
 | Artifact | Path | Size |
 | --- | --- | --- |
-| EXE | `src-tauri/target/release/archi_backend.exe` | **6.92 MiB** (7 256 576 bytes) |
-| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.2.2_x64-setup.exe` | **2.11 MiB** (2 213 444 bytes) |
+| EXE | `src-tauri/target/release/archi_backend.exe` | **7.26 MiB** (7 618 560 bytes) |
+| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.3.0_x64-setup.exe` | **2.26 MiB** (2 373 530 bytes) |
 
 ## Performance notes (UI look unchanged)
 
