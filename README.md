@@ -19,8 +19,8 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 - **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets; TAR family + password produces a real AES-256 `.7z`
 - **Edit:** add, folder, rename, delete, replace, **in-archive move** (drag into folders / up to parent / Root) — works on encrypted 7z too
 - **Fast edit paths:** ZIP append + logical delete; 7z non-solid **pack-copy** (no full Max recompress); TAR stream rebuild (no full work tree)
-- **Edit mode UI:** Auto / Fast / Compact + **Compact** rewrite action
-- **Explorer DnD:** drop files into an open archive folder, or drop an archive to open / sources to create
+- **Drag & Drop extraction:** drag files and folders directly out of the archive into Windows Explorer, Desktop, or external apps (with transparent AES-256 decrypt and background temp cleanup)
+- **Explorer drop & in-archive move:** drop files from Explorer into an open archive folder, drop archives to open / sources to create, or drag entries into internal folders / parent breadcrumbs
 - **Test:** all open formats — decompress/read integrity without writing user files (password-aware)
 - **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
 - **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes

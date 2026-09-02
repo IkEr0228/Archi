@@ -1,8 +1,8 @@
 # Archi development status
 
-**Last updated:** 2026-07-22  
+**Last updated:** 2026-09-02  
 **Branch:** `master`  
-**Latest release:** **v0.2.0**  
+**Latest release:** **v0.2.2**  
 **License:** MIT (see root `LICENSE`)  
 **Repository:** https://github.com/IkEr0228/Archi
 
@@ -15,10 +15,12 @@
 | **Phase 3** | Formats, ZIP edit, CLI, multi-format create | **Done** |
 | **Phase 3.5** | File associations / Explorer (opt-in) | **Done** |
 | **Phase 4** | Incremental edit (ZIP append/logical delete, 7z pack-copy, TAR stream), in-archive DnD, Edit mode UI | **Done (v0.2.0)** |
-| **Done** | Encrypted 7z / passwords UI (remember on session) | Done |
+| **Phase 4.5** | Encrypted archives (AES-256 ZIP/7z), session password reuse | **Done (v0.2.1)** |
+| **Phase 5** | Native Drag-and-Drop extraction to Explorer/Desktop, unified internal/external DnD | **Done (v0.2.2)** |
 
 ## What works today
 
+- **Drag-and-Drop:** drag files and folders directly out of the open archive into Windows Explorer, Desktop, or other apps (Windows OLE `CF_HDROP`, AES-256 decrypt, background cleanup); drop external files into the active virtual folder; drag entries into internal folders.
 - **ZIP:** open, list, search/filter/sort, extract (modes + conflicts), create, test, properties, edit (append/logical delete/rebuild), in-archive DnD, Explorer drop-to-folder. Codecs: Stored + Deflate.
 - **Create formats (dropdown order):** ZIP, **7z**, TAR, TAR.GZ, TAR.BZ2, TAR.XZ (7z defaults to Max / LZMA2-9).
 - **TAR family + 7z:** open, list, extract, **test**, **edit** (stream rebuild / pack-copy / solid repack fallback). Single-stream gz/bz2/xz: open/list/extract/**test** only.
@@ -48,12 +50,12 @@ npm run tauri build
 Release Rust profile: `src-tauri/Cargo.toml` → `[profile.release]` (LTO, strip, opt-level 3, panic=abort).  
 Frontend: Vite production minify.
 
-**Last measured release build (2026-07-22, v0.2.0):**
+**Last measured release build (2026-09-02, v0.2.2):**
 
 | Artifact | Path | Size |
 | --- | --- | --- |
-| EXE | `src-tauri/target/release/archi_backend.exe` | **6.40 MiB** (6 715 392 bytes) |
-| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.2.0_x64-setup.exe` | **1.97 MiB** (2 067 809 bytes) |
+| EXE | `src-tauri/target/release/archi_backend.exe` | **6.92 MiB** (7 256 576 bytes) |
+| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.2.2_x64-setup.exe` | **2.11 MiB** (2 213 444 bytes) |
 
 ## Performance notes (UI look unchanged)
 
