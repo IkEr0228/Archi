@@ -5,6 +5,7 @@ pub mod cli_open;
 pub mod commands;
 pub mod conflict;
 pub mod create_common;
+pub mod drag_out;
 pub mod extraction;
 pub mod file_assoc;
 pub mod format_detect;

@@ -703,3 +703,43 @@ pub fn register_file_associations_command() -> Result<FileAssociationStatus, Com
 pub fn unregister_file_associations_command() -> Result<FileAssociationStatus, CommandError> {
     unregister_file_associations()
 }
+
+/// Extract selected archive entries to temporary staging and start native drag operation on main thread.
+#[command]
+pub async fn start_drag_out(
+    app: AppHandle,
+    window: tauri::Window,
+    archive_path: String,
+    selected_paths: Vec<String>,
+    password: Option<String>,
+) -> Result<(), CommandError> {
+    let (temp_dir, disk_paths) = tauri::async_runtime::spawn_blocking(move || {
+        crate::drag_out::stage_drag_files(Path::new(&archive_path), &selected_paths, password)
+    })
+    .await
+    .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let r = drag::start_drag(
+            &window,
+            drag::DragItem::Files(disk_paths),
+            drag::Image::Raw(vec![]),
+            |_res, _pos| {},
+            drag::Options {
+                mode: drag::DragMode::Copy,
+                skip_animatation_on_cancel_or_failure: false,
+            },
+        );
+        let _ = tx.send(r);
+    })
+    .map_err(|e| CommandError::new("main_thread_error", e.to_string()))?;
+
+    let res = rx
+        .recv()
+        .map_err(|e| CommandError::new("drag_recv_error", e.to_string()))?;
+
+    crate::drag_out::register_temp_dir_for_cleanup(temp_dir);
+
+    res.map_err(|e| CommandError::new("drag_failed", e.to_string()))
+}

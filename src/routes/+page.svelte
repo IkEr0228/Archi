@@ -1174,6 +1174,32 @@
     );
   }
 
+  /** Native drag-and-drop extraction from archive to external applications (Explorer, etc.). */
+  async function handleDragOut(sources: string[]) {
+    if (!isArchiveOpen || !currentArchivePath || !sources.length || activeOperation) return;
+    try {
+      await invoke('start_drag_out', {
+        archivePath: currentArchivePath,
+        selectedPaths: sources,
+        password: archivePassword
+      });
+    } catch (e: any) {
+      if (invokeErrorCode(e) === 'password_required') {
+        askPassword({
+          purpose: 'extract',
+          title: archivePassword
+            ? 'Invalid password — try again'
+            : 'Archive is password-protected'
+        }, !!archivePassword);
+        return;
+      }
+      const code = invokeErrorCode(e);
+      if (code !== 'cancelled') {
+        errorMessage = `Drag-and-drop failed: ${formatInvokeError(e)}`;
+      }
+    }
+  }
+
   async function handleReplaceFile() {
     if (!canReplace || !singleSelectedEntry || activeOperation) return;
     try {
@@ -1347,6 +1373,7 @@
         onNavigate={handleNavigate}
         onSelectionChange={handleSelectionChange}
         onMoveEntries={handleMoveEntries}
+        onDragOut={handleDragOut}
       />
     {:else}
       <EmptyStateComponent 
