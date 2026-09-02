@@ -14,27 +14,28 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 
 ## Features
 
-- **Multi-format open/list/extract:** ZIP, RAR, TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
-- **Encrypted archives:** open, extract, test, and create **AES-256** password-protected ZIP and 7z; password prompt with retry, session reuse for extract/test/edit
+- **Multi-format open/list/extract:** ZIP, RAR (RAR4 & RAR5), TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
+- **Encrypted archives:** open, extract, test, and create **AES-256** password-protected ZIP and 7z; password-protected RAR extraction; interactive password modal with session reuse
+- **High-performance engine:** powered by `mimalloc` global allocator, hardware-accelerated `ahash` indexing, and optimized IPC serialization
 - **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets; TAR family + password produces a real AES-256 `.7z`
-- **Edit:** add, folder, rename, delete, replace, **in-archive move** (drag into folders / up to parent / Root) — works on encrypted 7z too
-- **Fast edit paths:** ZIP append + logical delete; 7z non-solid **pack-copy** (no full Max recompress); TAR stream rebuild (no full work tree)
-- **Drag & Drop extraction:** drag files and folders directly out of the archive into Windows Explorer, Desktop, or external apps (with transparent AES-256 decrypt, speculative pre-staging, and background temp cleanup)
-- **Explorer drop & in-archive move:** drop files from Explorer into an open archive folder, drop archives to open / sources to create, or drag entries into internal folders / parent breadcrumbs
-- **Test:** all open formats — decompress/read integrity without writing user files (password-aware)
-- **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sort, virtualized table
+- **Fast incremental edit:** ZIP in-place append + fast logical delete; 7z non-solid **pack-copy** (no full Max recompression); TAR stream rebuild
+- **In-archive reorganization:** drag entries into internal folders, parent breadcrumbs, or root (`Move`) with instant in-memory preview
+- **Drag & Drop extraction:** drag files and folders directly out of the archive into Windows Explorer, Desktop, or external apps (with transparent password decryption, speculative background pre-staging, and automatic temp cleanup)
+- **Explorer drop & integration:** drop files from Explorer into an open archive folder, drop archives to open, or drop multiple sources to create
+- **Test:** all open formats (ZIP, 7z, TAR family, single streams) — decompress/read integrity verification without writing user files
+- **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sorting, virtualized table rendering
 - **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes
 - **Conflicts:** overwrite / skip / rename / cancel (+ apply to all)
 - **CLI + single-instance:** `archi.exe path\to\archive` opens in the running app
-- **Opt-in Explorer associations** (per-user HKCU only)
+- **Opt-in Explorer associations:** per-user (HKCU only) registration for all supported archive extensions
 
 ## Format support
 
 | Format | Open / list | Extract | Create | Test | Edit | Encryption | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **ZIP** | Yes | Yes | Yes | Yes | Yes | AES-256 | Stored + Deflate. Encrypted listing works without password; extract/test prompt. Edit: append add, logical/fast delete, stream rebuild rename/move. |
-| **7z** | Yes | Yes | Yes | Yes | Yes | AES-256 | LZMA/LZMA2. Password prompt on open when headers are encrypted. Edit: non-solid pack-copy (fallback stream rebuild / solid repack), encryption preserved. |
-| **RAR** | Yes | Yes | No | No | No | Password | RAR4 and RAR5 formats via static unrar library. Read and extract only (open-source licensing compliant). Password-protected archives supported. |
+| **ZIP** | Yes | Yes | Yes | Yes | Yes | AES-256 | Stored + Deflate. Encrypted listing works without password; extract/test prompt. Fast append add, logical delete, stream rebuild rename/move. |
+| **7z** | Yes | Yes | Yes | Yes | Yes | AES-256 | LZMA/LZMA2. Password prompt on open when headers are encrypted. Non-solid pack-copy (fast delete/move/replace without recompression), encryption preserved. |
+| **RAR** | Yes | Yes | No | No | No | Password | RAR4 and RAR5 formats via static `unrar` library (RARLAB source). Read and extract only (open-source license compliant). Password-protected archives supported. |
 | **TAR** | Yes | Yes | Yes | Yes | Yes | via .7z | Create = store. Edit = stream rebuild. Password request creates AES-256 7z instead. |
 | **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
 | **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
@@ -43,25 +44,39 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https:
 | **BZIP2** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
 | **XZ** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
 
-Capability flags from the backend drive the UI: unavailable actions stay disabled.
+Capability flags from the backend dynamically drive the UI: unavailable actions stay disabled.
 
 ## Password-protected archives
 
-- **Open/list:** encrypted 7z prompts immediately (headers are encrypted); encrypted ZIP lists entries (central directory is plaintext) and flags a warning.
-- **Extract / test:** password prompt with **invalid password → try again**; a correct password is reused for the session (extract, test, edit).
+- **Open/list:** encrypted 7z prompts immediately (headers are encrypted); encrypted ZIP lists entries (central directory is plaintext) and flags a warning; password-protected RAR lists headers and prompts when extraction is requested.
+- **Extract / test:** password prompt with **invalid password → try again**; a correct password is automatically reused for the session (extract, test, edit, drag-out).
 - **Create:** optional password field in the Create dialog — AES-256 for ZIP and 7z. For TAR-family formats there is no native encryption, so Archi warns and writes a real `.7z`.
-- **Edit on encrypted 7z:** add/rename/delete/move/replace/compact keep the archive encrypted with the same password.
+- **Edit on encrypted 7z:** add/rename/delete/move/replace/compact keep the archive encrypted with the same session password.
+
+## Drag & drop operations
+
+### Dragging out of Archi
+- Select one or more files/folders in the archive table.
+- Drag directly into **Windows Explorer**, onto the **Desktop**, or into applications (Notepad, web browsers, Discord, etc.).
+- Utilizes native Windows OLE `CF_HDROP` integration with real embedded drag icons and speculative pre-staging on `pointerdown` for minimal latency.
+- Staged temporary files are automatically cleaned up in the background once external applications finish reading them.
+
+### Dragging into Archi
+| Drop Target | Action |
+| --- | --- |
+| Exactly one archive path (no archive open) | Open that archive |
+| Files/folders while an **editable** archive is open | **Add into the current virtual folder** (breadcrumb path) |
+| Files/folders over internal folder rows or breadcrumbs | **Move entries into that target folder** |
+| Files/folders with no archive open | Open Create dialog with those paths as sources |
 
 ## Safety highlights
 
-- Entry paths checked for traversal, absolute/drive/UNC forms, and unsafe Windows names
+- Entry paths checked for traversal, absolute/drive/UNC forms, and unsafe Windows device names (`CON`, `NUL`, `AUX`, etc.)
 - Archive symlinks rejected; filesystem reparse points not followed on extract/create sources
 - Extracted files are **never** executed or opened automatically
 - Create rejects output paths that are a source or lie inside a selected source tree
-- Long operations use operation IDs, cancellable progress, and cleanup of partial output
-- Open-time risk assessment can gate extract behind an explicit **Continue** on suspicious metadata
-
-Details: see **Extract conflict policy**, **Create options**, and **ZIP edit** sections below, plus [`SECURITY.md`](SECURITY.md).
+- Long operations use operation IDs, cancellable progress, and automatic cleanup of partial output
+- Open-time risk assessment can gate extract behind an explicit **Continue** on suspicious metadata (zip bomb detection, extreme path depth)
 
 ## Requirements
 
@@ -83,7 +98,7 @@ Release artifacts (after `npm run tauri build`):
 | Artifact | Typical path |
 | --- | --- |
 | Portable EXE | `src-tauri/target/release/archi_backend.exe` (renamed to `archi.exe` in releases) |
-| Installer | `src-tauri/target/release/bundle/nsis/archi_0.2.1_x64-setup.exe` |
+| Installer | `src-tauri/target/release/bundle/nsis/archi_0.3.0_x64-setup.exe` |
 
 ## Development checks
 
@@ -128,21 +143,12 @@ Hard fails (no modal): destination symlink/reparse, file↔directory conflicts, 
 | **Include root folder** | On | Directory sources keep their folder name at archive root |
 | **Overwrite if exists** | Off | On: replace existing **regular file** only |
 
-### Drag-and-drop
-
-| Drop | Result |
-| --- | --- |
-| Exactly one archive path (no archive open) | Open that archive |
-| Files/folders while an **editable** archive is open | **Add into the current folder** (breadcrumb path) |
-| Files/folders with no archive open | Open Create with those paths as sources |
-
 ## Edit archive
 
-- **ZIP:** stream rebuild into a temporary sibling, then atomic replace (Windows `MoveFileEx`).
-- **TAR family + 7z:** extract to a temp work folder, apply the change, recreate the archive, replace the original. Needs free disk roughly the size of the unpacked tree.
-- **Single-stream GZIP/BZIP2/XZ:** no multi-entry edit.
-
-Cancel/error paths remove partial temps and leave the original intact when possible.
+- **ZIP:** fast append for new files, logical delete (marks deleted in central directory without rewriting), or full compact rebuild when requested.
+- **7z:** non-solid **pack-copy** (extracts and copies compressed pack streams directly, saving full recompression time); stream rebuild fallback for solid archives.
+- **TAR family:** stream rebuild without requiring a full unpacked temporary directory tree.
+- **RAR & Single-stream GZIP/BZIP2/XZ:** in-archive editing is disabled by design.
 
 | Action | Behavior |
 | --- | --- |
@@ -151,18 +157,18 @@ Cancel/error paths remove partial temps and leave the original intact when possi
 | **Rename** | File or folder (prefix rewrite for folders) |
 | **Delete** | Selection + recursive folder prefix |
 | **Replace** | One file’s content from disk |
+| **Move** | Drag and drop entry into any internal folder or breadcrumbs |
 
 ## File associations (opt-in)
 
-Toolbar **Associations** registers Archi under **HKCU** only (not machine-wide, not installer-default). Reversible from the same dialog.
+Toolbar **Associations** registers Archi under **HKCU** only (not machine-wide, not installer-default). Reversible from the same dialog. Supports `.zip`, `.7z`, `.rar`, `.tar`, `.gz`, `.bz2`, `.xz`, and compound extensions.
 
 ## Limitations
 
+- RAR creation/compression is disabled to adhere strictly to open-source licensing rules (reading and extraction are fully supported)
 - ZIP methods beyond Stored/Deflate are not decompressed
-- ZIP edit rewrites the whole archive per operation
-- No RAR support (proprietary format), no archive repair or multi-volume
 - TAR-family formats have no native encryption — password-protected create falls back to 7z
-- Secure extract path is Windows-focused
+- Secure extract path is Windows-focused (utilizing native NTFS handle-relative writes)
 
 ## Documentation map
 
