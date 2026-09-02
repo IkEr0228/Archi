@@ -34,6 +34,7 @@ xz2 = "0.1"
 # Pack-copy spike uses a local vendor fork (push_packed_entry); see vendor/sevenz-rust2.
 sevenz-rust2 = { path = "../vendor/sevenz-rust2", version = "0.21", default-features = false, features = ["compress", "util", "aes256"] }
 winreg = "0.55"
+mimalloc = { version = "0.1", default-features = false }
 
 # Desktop release: speed + smaller binary.
 [profile.release]

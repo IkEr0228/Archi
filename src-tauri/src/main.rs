@@ -7,6 +7,9 @@ use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Clone, serde::Serialize)]
 struct CliOpenPayload {
     path: Option<String>,
