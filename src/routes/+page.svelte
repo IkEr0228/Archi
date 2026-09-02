@@ -29,6 +29,12 @@
     isArchivePath,
     withCreateExtension,
   } from '../lib/createPaths.js';
+  import {
+    folderUnderPoint,
+    isStagedDragPath,
+    isValidMoveDest,
+    setDropHighlight
+  } from '../lib/dropTarget.js';
 
   interface ArchiveEntry {
     path: string;
@@ -423,26 +429,74 @@
 
   /** Highlight drop target when dragging files over the window. */
   let fileDragActive = $state(false);
+  let activeDragOutSources = $state<string[] | null>(null);
+  let lastDragOutSources = $state<string[] | null>(null);
+  let clearLastDragTimer: any = null;
 
   onMount(() => {
-    // External file DnD (Explorer → Archi):
-    // - Archive open + editable: add into current virtual folder
-    // - No archive: single archive path → open; otherwise open Create modal
+    // External file DnD (Explorer → Archi) & In-Archive native drag:
     const unlistenDragDrop = getCurrentWebview().onDragDropEvent((event) => {
       const kind = event.payload.type;
+      const currentSources = activeDragOutSources || lastDragOutSources;
+      const isInternalDrag = !!activeDragOutSources;
+
       if (kind === 'enter' || kind === 'over') {
-        fileDragActive = true;
+        if (isInternalDrag && currentSources) {
+          // Internal drag in progress: do not show full-window drop overlay
+          fileDragActive = false;
+          const pos = event.payload.position;
+          if (pos && typeof window !== 'undefined') {
+            const dpr = window.devicePixelRatio || 1;
+            const folder = folderUnderPoint(pos.x / dpr, pos.y / dpr);
+            if (folder && isValidMoveDest(currentSources, folder)) {
+              setDropHighlight(folder);
+            } else {
+              setDropHighlight(null);
+            }
+          }
+        } else {
+          fileDragActive = true;
+        }
         return;
       }
+
       if (kind === 'leave') {
         fileDragActive = false;
+        if (isInternalDrag) {
+          setDropHighlight(null);
+        }
         return;
       }
+
       if (kind !== 'drop') return;
       fileDragActive = false;
+      setDropHighlight(null);
       if (activeOperation) return;
+
       const paths = event.payload.paths;
       if (!paths?.length) return;
+
+      // Check if dropped files are from our own drag-out staging directory
+      const isOurStagedFiles =
+        isInternalDrag || paths.some((p) => isStagedDragPath(p));
+
+      if (isOurStagedFiles) {
+        // Dropped inside Archi's own window!
+        // Resolve target folder from drop coordinates:
+        const sources = currentSources;
+        const pos = event.payload.position;
+        if (sources?.length && pos && typeof window !== 'undefined') {
+          const dpr = window.devicePixelRatio || 1;
+          const dest = folderUnderPoint(pos.x / dpr, pos.y / dpr);
+          if (dest && isValidMoveDest(sources, dest)) {
+            void handleMoveEntries(sources, dest);
+          }
+        }
+        // If dropped on non-folder / empty area: safely ignore (no Add, no error).
+        return;
+      }
+
+      // Genuine external files dropped from Explorer:
       handleExternalFileDrop(paths);
     });
 
@@ -1159,10 +1213,26 @@
     }
   }
 
+  let lastMoveDispatch: { sources: string[]; dest: string; timestamp: number } | null = null;
+
   /** In-archive drag-and-drop: move entries into a folder (leaf names kept). */
   async function handleMoveEntries(sources: string[], destFolder: string) {
     if (!canEditBase || activeOperation || !currentArchivePath || !sources.length) return;
     const dest = destFolder === '/' ? '' : destFolder;
+
+    // Deduplicate rapid duplicate move dispatches (e.g. from both OLE drop and pointerup)
+    const now = Date.now();
+    if (
+      lastMoveDispatch &&
+      now - lastMoveDispatch.timestamp < 1000 &&
+      lastMoveDispatch.dest === dest &&
+      lastMoveDispatch.sources.length === sources.length &&
+      lastMoveDispatch.sources.every((s, i) => s === sources[i])
+    ) {
+      return;
+    }
+    lastMoveDispatch = { sources: [...sources], dest, timestamp: now };
+
     await runEditOperation('Move', (operationId) =>
       invoke<EditSummary>('move_archive_entries_command', {
         operationId,
@@ -1177,6 +1247,9 @@
   /** Native drag-and-drop extraction from archive to external applications (Explorer, etc.). */
   async function handleDragOut(sources: string[]) {
     if (!isArchiveOpen || !currentArchivePath || !sources.length || activeOperation) return;
+    activeDragOutSources = sources;
+    lastDragOutSources = sources;
+    if (clearLastDragTimer) clearTimeout(clearLastDragTimer);
     try {
       await invoke('start_drag_out', {
         archivePath: currentArchivePath,
@@ -1197,6 +1270,12 @@
       if (code !== 'cancelled') {
         errorMessage = `Drag-and-drop failed: ${formatInvokeError(e)}`;
       }
+    } finally {
+      activeDragOutSources = null;
+      setDropHighlight(null);
+      clearLastDragTimer = setTimeout(() => {
+        lastDragOutSources = null;
+      }, 1500);
     }
   }
 
