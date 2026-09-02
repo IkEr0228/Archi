@@ -527,10 +527,11 @@ pub fn select_archive_file(app: tauri::AppHandle) -> Result<Option<String>, Stri
         .add_filter(
             "Archives",
             &[
-                "zip", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "7z",
+                "zip", "tar", "gz", "tgz", "bz2", "tbz2", "tbz", "xz", "txz", "7z", "rar",
             ],
         )
         .add_filter("ZIP", &["zip"])
+        .add_filter("RAR", &["rar"])
         .add_filter(
             "TAR",
             &[
