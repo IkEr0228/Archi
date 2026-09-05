@@ -94,10 +94,10 @@ pub fn create_new_window(app: &AppHandle, archive_path: Option<String>) -> Resul
     let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
     let label = format!("win_{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), id);
 
-    let url = if let Some(ref path) = archive_path {
-        format!("index.html?archive={}", url_encode(path))
+    let webview_url = if let Some(ref path) = archive_path {
+        WebviewUrl::App(format!("?archive={}", url_encode(path)).into())
     } else {
-        "index.html".to_string()
+        WebviewUrl::default()
     };
 
     let title = if let Some(ref p) = archive_path {
@@ -144,7 +144,7 @@ pub fn create_new_window(app: &AppHandle, archive_path: Option<String>) -> Resul
         (PhysicalPosition::new(150, 150), PhysicalSize::new(800, 600))
     };
 
-    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, webview_url)
         .title(title)
         .decorations(false)
         .transparent(false)
@@ -189,6 +189,27 @@ mod tests {
         assert_eq!(parsed.y, 80);
         assert_eq!(parsed.width, 1024);
         assert_eq!(parsed.height, 768);
+    }
+
+    #[test]
+    fn test_url_join() {
+        use tauri::Url;
+        let base_dev = Url::parse("http://127.0.0.1:1420/").unwrap();
+        let joined_query = base_dev.join("?archive=test.zip").unwrap();
+        assert_eq!(joined_query.as_str(), "http://127.0.0.1:1420/?archive=test.zip");
+
+        let base_prod = Url::parse("tauri://localhost/").unwrap();
+        let joined_prod = base_prod.join("?archive=test.zip").unwrap();
+        assert_eq!(joined_prod.as_str(), "tauri://localhost/?archive=test.zip");
+
+        let base_custom = Url::parse("http://tauri.localhost/").unwrap();
+        let joined_custom = base_custom.join("?archive=test.zip").unwrap();
+        assert_eq!(joined_custom.as_str(), "http://tauri.localhost/?archive=test.zip");
+
+        let p = std::path::PathBuf::from("?archive=test.zip");
+        assert_eq!(p.to_string_lossy(), "?archive=test.zip");
+        let joined_from_p = base_dev.join(&p.to_string_lossy()).unwrap();
+        assert_eq!(joined_from_p.as_str(), "http://127.0.0.1:1420/?archive=test.zip");
     }
 }
 
