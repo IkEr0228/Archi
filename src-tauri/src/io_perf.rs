@@ -2,8 +2,12 @@
 
 use std::time::{Duration, Instant};
 
-/// Read/write chunk size. 128 KiB cuts syscall/IPC overhead vs 64 KiB on large files.
-pub const IO_BUFFER_SIZE: usize = 128 * 1024;
+/// Default read/write chunk size (256 KiB). Cuts syscall and context-switch
+/// overhead on modern SSDs/NVMe drives while fitting comfortably in L2 CPU cache.
+pub const IO_BUFFER_SIZE: usize = 256 * 1024;
+
+/// Extended buffer size for bulk streams / large files (512 KiB).
+pub const IO_BUFFER_SIZE_LARGE: usize = 512 * 1024;
 
 /// Minimum gap between progress emissions (less frontend thrash on weak CPUs).
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
