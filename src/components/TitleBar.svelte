@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
   const appWindow = getCurrentWindow();
@@ -40,7 +41,9 @@
   // Keep OS Taskbar & Alt+Tab title synchronized
   $effect(() => {
     const title = archiveName ? `${archiveName} — Archi` : 'Archi';
-    void appWindow.setTitle(title).catch(() => {});
+    void invoke('set_window_title_command', { title })
+      .catch(() => appWindow.setTitle(title))
+      .catch(() => {});
   });
 </script>
 

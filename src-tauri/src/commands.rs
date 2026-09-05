@@ -24,7 +24,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{command, AppHandle, Emitter, State};
+use tauri::{command, AppHandle, Emitter, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 /// CLI archive path resolved at process startup (first instance).
@@ -898,4 +898,15 @@ pub async fn create_new_window_command(
         .map(|_| ())
         .map_err(|e| CommandError::new("window_create_failed", e))
 }
+
+#[command]
+pub async fn set_window_title_command(
+    window: WebviewWindow,
+    title: String,
+) -> Result<(), CommandError> {
+    window
+        .set_title(&title)
+        .map_err(|e| CommandError::new("set_title_failed", e.to_string()))
+}
+
 

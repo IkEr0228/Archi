@@ -86,6 +86,7 @@ fn main() {
             commands::prepare_drag_out,
             commands::cancel_drag_out,
             commands::create_new_window_command,
+            commands::set_window_title_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
