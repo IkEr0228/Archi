@@ -233,9 +233,18 @@ mod tests {
             method: None,
         };
         let json = serde_json::to_string(&entry).unwrap();
-        assert!(!json.contains(r#""compressed_size":"#), "None compressed_size should be skipped, got: {json}");
-        assert!(!json.contains(r#""modified_at":"#), "None modified_at should be skipped");
-        assert!(!json.contains(r#""method":"#), "None method should be skipped");
+        assert!(
+            !json.contains(r#""compressed_size":"#),
+            "None compressed_size should be skipped, got: {json}"
+        );
+        assert!(
+            !json.contains(r#""modified_at":"#),
+            "None modified_at should be skipped"
+        );
+        assert!(
+            !json.contains(r#""method":"#),
+            "None method should be skipped"
+        );
 
         // Roundtrip deserialization preserves identical struct
         let decoded: ArchiveEntry = serde_json::from_str(&json).unwrap();
@@ -290,7 +299,8 @@ mod tests {
             .collect();
         let optimized_json = serde_json::to_string(&entries).unwrap();
         // Compare with simulated unoptimized payload that includes null keys
-        let null_overhead_per_entry = r#","compressed_size":null,"modified_at":null,"method":null"#.len();
+        let null_overhead_per_entry =
+            r#","compressed_size":null,"modified_at":null,"method":null"#.len();
         let expected_min_savings = 1000 * null_overhead_per_entry;
         assert!(
             expected_min_savings > 40_000,

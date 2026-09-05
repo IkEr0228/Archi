@@ -18,9 +18,9 @@ use crate::security::{
 };
 #[cfg(windows)]
 use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory};
+use ahash::AHashMap;
 use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
-use ahash::AHashMap;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -747,10 +747,7 @@ pub fn create_sevenz_archive(
         let methods = if password.is_empty() {
             vec![lzma2_opt.into()]
         } else {
-            vec![
-                AesEncoderOptions::new(password).into(),
-                lzma2_opt.into(),
-            ]
+            vec![AesEncoderOptions::new(password).into(), lzma2_opt.into()]
         };
         writer.set_content_methods(methods);
 

@@ -712,7 +712,9 @@ struct StagingOperation {
     session_id: u64,
     archive_path: String,
     selected_paths: Vec<String>,
-    result: std::sync::Arc<tokio::sync::Mutex<Option<Result<(std::path::PathBuf, Vec<std::path::PathBuf>), String>>>>,
+    result: std::sync::Arc<
+        tokio::sync::Mutex<Option<Result<(std::path::PathBuf, Vec<std::path::PathBuf>), String>>>,
+    >,
     notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
@@ -768,7 +770,11 @@ pub async fn prepare_drag_out(
     let selected_paths_clone = selected_paths.clone();
 
     let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::drag_out::stage_drag_files(Path::new(&archive_path_clone), &selected_paths_clone, password)
+        crate::drag_out::stage_drag_files(
+            Path::new(&archive_path_clone),
+            &selected_paths_clone,
+            password,
+        )
     })
     .await
     .map_err(|e| CommandError::new("worker_failed", e.to_string()))?;
@@ -817,7 +823,8 @@ pub async fn start_drag_out(
         }
     };
 
-    let (temp_dir, disk_paths, session_id) = if let Some((sid, result_holder, notify)) = staging_op {
+    let (temp_dir, disk_paths, session_id) = if let Some((sid, result_holder, notify)) = staging_op
+    {
         loop {
             if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) != sid {
                 return Ok(());
@@ -832,7 +839,9 @@ pub async fn start_drag_out(
                             let _ = lock.take();
                             break res_tuple;
                         }
-                        Err(msg) => return Err(CommandError::new("drag_staging_failed", msg.clone())),
+                        Err(msg) => {
+                            return Err(CommandError::new("drag_staging_failed", msg.clone()))
+                        }
                     }
                 }
             }
@@ -846,7 +855,11 @@ pub async fn start_drag_out(
         let archive_path_clone = archive_path.clone();
         let selected_paths_clone = selected_paths.clone();
         let (t, d) = tauri::async_runtime::spawn_blocking(move || {
-            crate::drag_out::stage_drag_files(Path::new(&archive_path_clone), &selected_paths_clone, password)
+            crate::drag_out::stage_drag_files(
+                Path::new(&archive_path_clone),
+                &selected_paths_clone,
+                password,
+            )
         })
         .await
         .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
@@ -908,5 +921,3 @@ pub async fn set_window_title_command(
         .set_title(&title)
         .map_err(|e| CommandError::new("set_title_failed", e.to_string()))
 }
-
-

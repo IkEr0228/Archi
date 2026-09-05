@@ -11,11 +11,11 @@ use crate::create_common::{
 use crate::extraction::normalize_entry_name;
 use crate::models::{CommandError, CompressionPreset, EditSummary, OperationProgress};
 use crate::security::validate_entry_path;
+use ahash::AHashMap;
 use sevenz_rust2::{
     Archive, ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, EncoderMethod, Password,
     SIGNATURE_HEADER_SIZE,
 };
-use ahash::AHashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -125,7 +125,6 @@ fn normalize_and_validate(path: &str) -> Result<String, CommandError> {
 fn selection_matches(entry_path: &str, selected: &str) -> bool {
     entry_path == selected || entry_path.starts_with(&(selected.to_owned() + "/"))
 }
-
 
 /// Why pack-copy is not eligible for this archive / plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -742,7 +741,8 @@ pub fn pack_copy_delete_to_temp_only(
         )
     })?;
     let slots = build_pack_slots(&archive)?;
-    let slot_by_file: AHashMap<usize, &PackSlot> = slots.iter().map(|s| (s.file_index, s)).collect();
+    let slot_by_file: AHashMap<usize, &PackSlot> =
+        slots.iter().map(|s| (s.file_index, s)).collect();
 
     let mut keep: Vec<usize> = Vec::new();
     let mut matched = false;

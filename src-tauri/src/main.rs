@@ -17,15 +17,23 @@ fn main() {
             let path = resolve_cli_archive_path(&argv, std::path::Path::new(&cwd))
                 .map(|p| p.to_string_lossy().into_owned());
             if let Some(archive_path) = path {
-                if let Err(error) = archi_backend_lib::window_manager::create_new_window(app, Some(archive_path)) {
+                if let Err(error) =
+                    archi_backend_lib::window_manager::create_new_window(app, Some(archive_path))
+                {
                     eprintln!("Failed to spawn new window: {error}");
                 }
             } else {
                 let windows = app.webview_windows();
-                if let Some(window) = windows.values().find(|w| w.is_focused().unwrap_or(false)).or_else(|| windows.values().next()) {
+                if let Some(window) = windows
+                    .values()
+                    .find(|w| w.is_focused().unwrap_or(false))
+                    .or_else(|| windows.values().next())
+                {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
-                } else if let Err(error) = archi_backend_lib::window_manager::create_new_window(app, None) {
+                } else if let Err(error) =
+                    archi_backend_lib::window_manager::create_new_window(app, None)
+                {
                     eprintln!("Failed to spawn blank window: {error}");
                 }
             }
@@ -47,9 +55,16 @@ fn main() {
 
             // Restore saved window state for main window if available:
             if let Some(window) = app.get_webview_window("main") {
-                if let Some(saved) = archi_backend_lib::window_manager::load_window_state(app.handle()) {
-                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(saved.x, saved.y)));
-                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(saved.width, saved.height)));
+                if let Some(saved) =
+                    archi_backend_lib::window_manager::load_window_state(app.handle())
+                {
+                    let _ = window.set_position(tauri::Position::Physical(
+                        tauri::PhysicalPosition::new(saved.x, saved.y),
+                    ));
+                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                        saved.width,
+                        saved.height,
+                    )));
                 }
                 archi_backend_lib::window_manager::attach_window_state_saver(&window);
                 let _ = window.show();

@@ -16,9 +16,9 @@ use crate::sevenz_format::create_sevenz_archive;
 use crate::sevenz_pack_copy::{
     assess_pack_copy_eligibility, pack_stream_rebuild, PackStreamMember,
 };
+use ahash::AHashMap;
 use sevenz_rust2::encoder_options::AesEncoderOptions;
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
-use ahash::AHashMap;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -99,8 +99,6 @@ fn map_sz_error(error: sevenz_rust2::Error) -> CommandError {
 fn sz_cb_err(msg: impl Into<String>) -> sevenz_rust2::Error {
     sevenz_rust2::Error::Other(msg.into().into())
 }
-
-
 
 fn edit_compression(options: &EditOptions) -> CompressionPreset {
     options.compression.unwrap_or(CompressionPreset::Normal)

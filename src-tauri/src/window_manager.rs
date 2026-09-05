@@ -5,8 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
-    WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
 };
 
 static WINDOW_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -90,9 +90,19 @@ pub fn url_encode(input: &str) -> String {
 }
 
 /// Spawn a new window with cascading positioning and optional initial archive path.
-pub fn create_new_window(app: &AppHandle, archive_path: Option<String>) -> Result<WebviewWindow, String> {
+pub fn create_new_window(
+    app: &AppHandle,
+    archive_path: Option<String>,
+) -> Result<WebviewWindow, String> {
     let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let label = format!("win_{}_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), id);
+    let label = format!(
+        "win_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+        id
+    );
 
     let webview_url = if let Some(ref path) = archive_path {
         WebviewUrl::App(format!("?archive={}", url_encode(path)).into())
@@ -101,7 +111,10 @@ pub fn create_new_window(app: &AppHandle, archive_path: Option<String>) -> Resul
     };
 
     let title = if let Some(ref p) = archive_path {
-        let name = Path::new(p).file_name().and_then(|n| n.to_str()).unwrap_or("Archi");
+        let name = Path::new(p)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Archi");
         format!("{name} — Archi")
     } else {
         "Archi".to_string()
@@ -109,18 +122,25 @@ pub fn create_new_window(app: &AppHandle, archive_path: Option<String>) -> Resul
 
     // Calculate cascading position and size based on active windows or saved state:
     let windows = app.webview_windows();
-    let reference_window = windows.values().find(|w| w.is_focused().unwrap_or(false))
+    let reference_window = windows
+        .values()
+        .find(|w| w.is_focused().unwrap_or(false))
         .or_else(|| windows.values().next());
 
     let (pos, size) = if let Some(ref w) = reference_window {
-        let cur_pos = w.outer_position().unwrap_or(PhysicalPosition::new(100, 100));
+        let cur_pos = w
+            .outer_position()
+            .unwrap_or(PhysicalPosition::new(100, 100));
         let cur_size = w.inner_size().unwrap_or(PhysicalSize::new(800, 600));
 
         let monitor = w.current_monitor().ok().flatten();
         let (max_x, max_y) = if let Some(m) = monitor {
             let m_size = m.size();
             let m_pos = m.position();
-            (m_pos.x + m_size.width as i32 - 100, m_pos.y + m_size.height as i32 - 100)
+            (
+                m_pos.x + m_size.width as i32 - 100,
+                m_pos.y + m_size.height as i32 - 100,
+            )
         } else {
             (1600, 900)
         };
@@ -137,9 +157,15 @@ pub fn create_new_window(app: &AppHandle, archive_path: Option<String>) -> Resul
             cur_pos.y + 30
         };
 
-        (PhysicalPosition::new(next_x.max(30), next_y.max(30)), cur_size)
+        (
+            PhysicalPosition::new(next_x.max(30), next_y.max(30)),
+            cur_size,
+        )
     } else if let Some(saved) = load_window_state(app) {
-        (PhysicalPosition::new(saved.x.max(0), saved.y.max(0)), PhysicalSize::new(saved.width.max(400), saved.height.max(300)))
+        (
+            PhysicalPosition::new(saved.x.max(0), saved.y.max(0)),
+            PhysicalSize::new(saved.width.max(400), saved.height.max(300)),
+        )
     } else {
         (PhysicalPosition::new(150, 150), PhysicalSize::new(800, 600))
     };
@@ -170,9 +196,15 @@ mod tests {
 
     #[test]
     fn test_url_encode_ascii_and_special() {
-        assert_eq!(url_encode("C:\\path\\file name.zip"), "C%3A%5Cpath%5Cfile%20name.zip");
+        assert_eq!(
+            url_encode("C:\\path\\file name.zip"),
+            "C%3A%5Cpath%5Cfile%20name.zip"
+        );
         assert_eq!(url_encode("test-123_456.tar.gz"), "test-123_456.tar.gz");
-        assert_eq!(url_encode("архив.zip"), "%D0%B0%D1%80%D1%85%D0%B8%D0%B2.zip");
+        assert_eq!(
+            url_encode("архив.zip"),
+            "%D0%B0%D1%80%D1%85%D0%B8%D0%B2.zip"
+        );
     }
 
     #[test]
@@ -196,7 +228,10 @@ mod tests {
         use tauri::Url;
         let base_dev = Url::parse("http://127.0.0.1:1420/").unwrap();
         let joined_query = base_dev.join("?archive=test.zip").unwrap();
-        assert_eq!(joined_query.as_str(), "http://127.0.0.1:1420/?archive=test.zip");
+        assert_eq!(
+            joined_query.as_str(),
+            "http://127.0.0.1:1420/?archive=test.zip"
+        );
 
         let base_prod = Url::parse("tauri://localhost/").unwrap();
         let joined_prod = base_prod.join("?archive=test.zip").unwrap();
@@ -204,12 +239,17 @@ mod tests {
 
         let base_custom = Url::parse("http://tauri.localhost/").unwrap();
         let joined_custom = base_custom.join("?archive=test.zip").unwrap();
-        assert_eq!(joined_custom.as_str(), "http://tauri.localhost/?archive=test.zip");
+        assert_eq!(
+            joined_custom.as_str(),
+            "http://tauri.localhost/?archive=test.zip"
+        );
 
         let p = std::path::PathBuf::from("?archive=test.zip");
         assert_eq!(p.to_string_lossy(), "?archive=test.zip");
         let joined_from_p = base_dev.join(&p.to_string_lossy()).unwrap();
-        assert_eq!(joined_from_p.as_str(), "http://127.0.0.1:1420/?archive=test.zip");
+        assert_eq!(
+            joined_from_p.as_str(),
+            "http://127.0.0.1:1420/?archive=test.zip"
+        );
     }
 }
-
