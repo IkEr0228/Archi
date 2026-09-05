@@ -3,6 +3,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
 
   import TitleBarComponent from '../components/TitleBar.svelte';
   import ToolbarComponent from '../components/Toolbar.svelte';
@@ -203,6 +204,20 @@
   let errorMessage = $state('');
   let openRequestId = 0;
   let activeOperation = $state<ActiveOperation | null>(null);
+  let showCloseConfirmModal = $state(false);
+
+  async function confirmCancelAndClose() {
+    showCloseConfirmModal = false;
+    if (activeOperation) {
+      try {
+        await invoke<boolean>('cancel_operation', { operationId: activeOperation.id });
+      } catch {
+        /* ignore */
+      }
+    }
+    const appWindow = getCurrentWindow();
+    await appWindow.destroy();
+  }
   let archiveCapabilities = $state<ArchiveCapabilities>({ ...unavailableCapabilities });
   let archiveWarnings = $state<{ code: string; message: string }[]>([]);
   let archiveStats = $state<ArchiveStats>({ ...emptyStats });
@@ -476,11 +491,8 @@
       const paths = event.payload.paths;
       if (!paths?.length) return;
 
-      // Check if dropped files are from our own drag-out staging directory
-      const isOurStagedFiles =
-        isInternalDrag || paths.some((p) => isStagedDragPath(p));
-
-      if (isOurStagedFiles) {
+      // In-archive move only applies if the drag originated within this very window:
+      if (isInternalDrag && currentSources?.length) {
         // Dropped inside Archi's own window!
         // Resolve target folder from drop coordinates:
         const sources = currentSources;
@@ -562,22 +574,57 @@
       openArchiveAtPath(path);
     });
 
-    // First-instance startup path (if launched with archive arg).
-    void (async () => {
-      try {
-        const path = await invoke<string | null>('get_startup_cli_path');
-        if (path) {
-          openArchiveAtPath(path);
-        }
-      } catch (e: unknown) {
-        errorMessage = `Failed to read startup CLI path: ${formatInvokeError(e)}`;
+    const appWindow = getCurrentWindow();
+    const unlistenClose = appWindow.onCloseRequested(async (event) => {
+      if (activeOperation) {
+        event.preventDefault();
+        showCloseConfirmModal = true;
       }
-    })();
+    });
+
+    // Check if launched with initial archive path via URL parameter (e.g. secondary window)
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialArchive = urlParams.get('archive');
+    if (initialArchive) {
+      openArchiveAtPath(initialArchive);
+    } else {
+      // First-instance startup path (if launched with archive arg).
+      void (async () => {
+        try {
+          const path = await invoke<string | null>('get_startup_cli_path');
+          if (path) {
+            openArchiveAtPath(path);
+          }
+        } catch (e: unknown) {
+          errorMessage = `Failed to read startup CLI path: ${formatInvokeError(e)}`;
+        }
+      })();
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && conflictPrompt) {
+      if (event.key === 'Escape') {
+        if (showCloseConfirmModal) {
+          event.preventDefault();
+          showCloseConfirmModal = false;
+          return;
+        }
+        if (conflictPrompt) {
+          event.preventDefault();
+          resolveConflict('cancel');
+          return;
+        }
+      }
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key === 'n' || event.key === 'N') &&
+        !event.shiftKey &&
+        !event.altKey
+      ) {
         event.preventDefault();
-        resolveConflict('cancel');
+        invoke('create_new_window_command', { archivePath: null }).catch((e: unknown) => {
+          errorMessage = `Failed to create new window: ${formatInvokeError(e)}`;
+        });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -588,6 +635,7 @@
         progressRaf = null;
       }
       pendingProgress = null;
+      unlistenClose.then((fn) => fn());
       unlistenDragDrop.then((fn) => fn());
       unlistenExtractProgress.then((fn) => fn());
       unlistenCreateProgress.then((fn) => fn());
@@ -1677,6 +1725,27 @@
         <button type="button" onclick={() => resolveConflict('rename')}>Rename</button>
         <button type="button" class="cancel-operation" onclick={() => resolveConflict('cancel')}>
           Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Close Window Confirmation (when active operation is running) -->
+{#if showCloseConfirmModal}
+  <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="close-confirm-dialog-title">
+    <div class="modal-content close-confirm-dialog">
+      <div id="close-confirm-dialog-title" class="modal-header monospace text-danger">OPERATION IN PROGRESS</div>
+      <div class="modal-body monospace">
+        <p>An operation is currently in progress{activeOperation ? ` (${activeOperation.kind.toUpperCase()})` : ''}.</p>
+        <p class="close-confirm-subtext">Closing this window will cancel the operation. Are you sure you want to close?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="cancel-operation" onclick={confirmCancelAndClose}>
+          Cancel & Close
+        </button>
+        <button type="button" class="primary" onclick={() => (showCloseConfirmModal = false)}>
+          Keep Window
         </button>
       </div>
     </div>

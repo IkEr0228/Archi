@@ -23,24 +23,15 @@ fn rar_error(code: &str, message: impl Into<String>) -> CommandError {
 
 pub(crate) fn map_unrar_error(err: UnrarError) -> CommandError {
     match err.code {
-        Code::MissingPassword => {
-            rar_error("password_required", "Archive requires a password.")
-        }
-        Code::BadPassword => {
-            rar_error("wrong_password", "Invalid password provided.")
-        }
-        Code::BadData => {
-            rar_error("corrupted_archive", "Archive data or CRC is corrupted.")
-        }
-        Code::BadArchive => {
-            rar_error("invalid_archive", "File is not a valid RAR archive.")
-        }
-        Code::NoMemory => {
-            rar_error("out_of_memory", "Not enough memory to process RAR archive.")
-        }
-        Code::UnknownFormat => {
-            rar_error("unsupported_format", "Unknown or unsupported RAR format/encryption.")
-        }
+        Code::MissingPassword => rar_error("password_required", "Archive requires a password."),
+        Code::BadPassword => rar_error("wrong_password", "Invalid password provided."),
+        Code::BadData => rar_error("corrupted_archive", "Archive data or CRC is corrupted."),
+        Code::BadArchive => rar_error("invalid_archive", "File is not a valid RAR archive."),
+        Code::NoMemory => rar_error("out_of_memory", "Not enough memory to process RAR archive."),
+        Code::UnknownFormat => rar_error(
+            "unsupported_format",
+            "Unknown or unsupported RAR format/encryption.",
+        ),
         _ => rar_error("read_failed", err.to_string()),
     }
 }
@@ -85,8 +76,11 @@ fn format_dos_datetime(file_time: u32) -> Option<String> {
     let month = (file_time >> 21) & 0x0f;
     let year = 1980 + ((file_time >> 25) & 0x7f);
 
-    if (1..=12).contains(&month) && (1..=31).contains(&day) && hour <= 23 && min <= 59 && sec <= 59 {
-        Some(format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}Z"))
+    if (1..=12).contains(&month) && (1..=31).contains(&day) && hour <= 23 && min <= 59 && sec <= 59
+    {
+        Some(format!(
+            "{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}Z"
+        ))
     } else {
         None
     }
@@ -148,7 +142,11 @@ pub fn open_rar(path: &Path, password: Option<&str>) -> Result<ArchiveInfo, Comm
                     entry.method = None;
                 }
             } else {
-                let uncompressed_size = if component_is_dir { 0 } else { header.unpacked_size };
+                let uncompressed_size = if component_is_dir {
+                    0
+                } else {
+                    header.unpacked_size
+                };
                 let modified_at = if j == parts.len() - 1 {
                     format_dos_datetime(header.file_time)
                 } else {
@@ -323,9 +321,8 @@ pub fn extract_rar(
         };
 
         if is_dir {
-            fs::create_dir_all(&target_path).map_err(|e| {
-                rar_error("write_failed", format!("Cannot create directory: {e}"))
-            })?;
+            fs::create_dir_all(&target_path)
+                .map_err(|e| rar_error("write_failed", format!("Cannot create directory: {e}")))?;
             open_archive = cursor.skip().map_err(map_unrar_error)?;
             continue;
         }
@@ -334,14 +331,18 @@ pub fn extract_rar(
         if let Some(parent) = target_path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| {
-                    rar_error("write_failed", format!("Cannot create parent directory: {e}"))
+                    rar_error(
+                        "write_failed",
+                        format!("Cannot create parent directory: {e}"),
+                    )
                 })?;
             }
         }
 
         let mut write_target = target_path.clone();
         if target_path.exists() {
-            let decision = conflict_resolver.resolve_file_exists(operation_id, &normalized, &target_path)?;
+            let decision =
+                conflict_resolver.resolve_file_exists(operation_id, &normalized, &target_path)?;
             match decision {
                 ConflictDecision::Overwrite => {
                     let _ = fs::remove_file(&target_path);
@@ -352,12 +353,13 @@ pub fn extract_rar(
                     continue;
                 }
                 ConflictDecision::Rename => {
-                    let parent = target_path.parent().ok_or_else(|| {
-                        rar_error("unsafe_destination", "Target has no parent.")
-                    })?;
-                    let file_name = target_path.file_name().ok_or_else(|| {
-                        rar_error("unsafe_destination", "Target has no file name.")
-                    })?.to_string_lossy();
+                    let parent = target_path
+                        .parent()
+                        .ok_or_else(|| rar_error("unsafe_destination", "Target has no parent."))?;
+                    let file_name = target_path
+                        .file_name()
+                        .ok_or_else(|| rar_error("unsafe_destination", "Target has no file name."))?
+                        .to_string_lossy();
                     write_target = unique_renamed_path(parent, &file_name)?;
                 }
                 ConflictDecision::Cancel => {

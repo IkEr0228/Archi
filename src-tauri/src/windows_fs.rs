@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::{self, Read};
@@ -7,7 +8,6 @@ use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
 use std::path::{Component, Path, PathBuf, PrefixComponent};
 use std::sync::Arc;
-use ahash::AHashMap;
 
 const OBJ_CASE_INSENSITIVE: u32 = 0x40;
 const OBJ_DONT_REPARSE: u32 = 0x1000;

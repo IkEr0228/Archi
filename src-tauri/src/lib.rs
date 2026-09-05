@@ -23,6 +23,7 @@ pub mod tar_create;
 pub mod tar_edit;
 pub mod tar_format;
 pub mod testing;
+pub mod window_manager;
 pub mod xz_format;
 pub mod zip_cd;
 pub mod zip_edit;

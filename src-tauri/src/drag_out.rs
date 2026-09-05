@@ -236,7 +236,6 @@ extern "system" {
     fn GetAsyncKeyState(vKey: i32) -> i16;
 }
 
-
 #[cfg(windows)]
 #[repr(C)]
 struct FileDataObject {

@@ -15,9 +15,9 @@ use crate::security::{
 };
 #[cfg(windows)]
 use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory};
+use ahash::AHashMap;
 use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
-use ahash::AHashMap;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
