@@ -399,6 +399,7 @@ pub fn extract_sevenz(
             &destination,
             &dest,
             &normalized,
+            entry.size,
             data,
             operation_id,
             cancelled,
@@ -411,6 +412,7 @@ pub fn extract_sevenz(
             &destination,
             &dest,
             &normalized,
+            entry.size,
             data,
             operation_id,
             cancelled,
@@ -492,6 +494,7 @@ fn write_extracted_file(
     extract_root: &Path,
     destination: &Path,
     entry_path: &str,
+    expected_size: u64,
     mut reader: impl Read,
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -584,6 +587,9 @@ fn write_extracted_file(
     let output = parent
         .create_file(&temp_name, created)
         .map_err(|error| sz_error("write_failed", format!("Cannot create temp file: {error}")))?;
+    if expected_size > 0 {
+        let _ = output.as_ref().set_len(expected_size);
+    }
     let mut buffer = [0_u8; BUFFER_SIZE];
     {
         let mut writer = output.as_ref();
@@ -630,6 +636,7 @@ fn write_extracted_file(
     _extract_root: &Path,
     destination: &Path,
     entry_path: &str,
+    expected_size: u64,
     mut reader: impl Read,
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -665,6 +672,9 @@ fn write_extracted_file(
     }
     let mut file = fs::File::create(&write_to)
         .map_err(|e| sz_error("write_failed", format!("Cannot create file: {e}")))?;
+    if expected_size > 0 {
+        let _ = file.set_len(expected_size);
+    }
     let mut buffer = [0_u8; BUFFER_SIZE];
     loop {
         if cancelled.load(Ordering::Relaxed) {
@@ -689,6 +699,18 @@ fn lzma2_level(preset: CompressionPreset) -> u32 {
         CompressionPreset::Normal => 5,
         // Maximum dictionary/effort for product 7z create.
         CompressionPreset::Max => 9,
+    }
+}
+
+pub(crate) fn lzma2_options(preset: CompressionPreset) -> Lzma2Options {
+    let level = lzma2_level(preset);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1);
+    if threads > 1 && level > 0 {
+        Lzma2Options::from_level_mt(level, threads, 1 << 21)
+    } else {
+        Lzma2Options::from_level(level)
     }
 }
 
@@ -718,18 +740,16 @@ pub fn create_sevenz_archive(
     }
 
     let (temp_path, temp_file) = create_temporary_archive(&output_path)?;
-    // Max compression = LZMA2 level 9 (dictionary/effort). Per-file streams keep
-    // cancel responsive; solid packing can be added later if needed for tiny gains.
-    let level = lzma2_level(options.compression);
+    let lzma2_opt = lzma2_options(options.compression);
 
     let result = (|| -> Result<OperationSummary, CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
         let methods = if password.is_empty() {
-            vec![Lzma2Options::from_level(level).into()]
+            vec![lzma2_opt.into()]
         } else {
             vec![
                 AesEncoderOptions::new(password).into(),
-                Lzma2Options::from_level(level).into(),
+                lzma2_opt.into(),
             ]
         };
         writer.set_content_methods(methods);

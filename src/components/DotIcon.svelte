@@ -134,8 +134,30 @@
     ]
   };
 
-  // Select matrix based on fileType, fallback to 'file'
-  let matrix = $derived(matrices[fileType] || matrices.file);
+  // Precomputed SVG path data for each matrix (cuts DOM elements from ~20 to 1 per icon)
+  function cellPath(colIndex: number, rowIndex: number): string {
+    const x = colIndex * 10 + 1.5;
+    const y = rowIndex * 10 + 1.5;
+    return `M${x + 2} ${y}h3a2 2 0 0 1 2 2v3a2 2 0 0 1 -2 2h-3a2 2 0 0 1 -2 -2v-3a2 2 0 0 1 2 -2z`;
+  }
+
+  const iconPaths: Record<string, { primaryPath: string; ledPath: string }> = {};
+  for (const [key, mat] of Object.entries(matrices)) {
+    let primary = '';
+    let led = '';
+    for (let r = 0; r < mat.length; r++) {
+      for (let c = 0; c < mat[r].length; c++) {
+        if (mat[r][c] === 1) {
+          primary += cellPath(c, r);
+        } else if (mat[r][c] === 2) {
+          led += cellPath(c, r);
+        }
+      }
+    }
+    iconPaths[key] = { primaryPath: primary, ledPath: led };
+  }
+
+  let iconData = $derived(iconPaths[fileType] || iconPaths.file);
 
   // Set colors based on fileType
   function getColor(type: string): string {
@@ -181,21 +203,13 @@
   class="dot-icon"
   aria-label={fileType}
 >
-  <!-- Only paint lit cells (was 64 circles/row → ~20 rects). Cheaper DOM/GPU. -->
-  {#each matrix as row, rowIndex}
-    {#each row as cell, colIndex}
-      {#if cell === 1 || cell === 2}
-        <rect
-          x={colIndex * 10 + 1.5}
-          y={rowIndex * 10 + 1.5}
-          width="7"
-          height="7"
-          rx="2"
-          fill={cell === 2 ? ledColor : activeColor}
-        />
-      {/if}
-    {/each}
-  {/each}
+  <!-- Single path per icon (was ~20 rect elements per icon, cutting DOM size by 20x) -->
+  {#if iconData.primaryPath}
+    <path d={iconData.primaryPath} fill={activeColor} />
+  {/if}
+  {#if iconData.ledPath}
+    <path d={iconData.ledPath} fill={ledColor} />
+  {/if}
 </svg>
 
 <style>

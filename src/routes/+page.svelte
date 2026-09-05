@@ -197,7 +197,7 @@
   let currentArchivePath = $state('');
   let currentArchiveFormat = $state('');
   let currentInternalPath = $state('/');
-  let archiveEntries = $state<ArchiveEntry[]>([]);
+  let archiveEntries = $state.raw<ArchiveEntry[]>([]);
   let selectedPaths = $state<Set<string>>(new Set());
   let operationStatus = $state('Ready');
   let errorMessage = $state('');

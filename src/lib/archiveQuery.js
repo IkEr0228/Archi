@@ -20,6 +20,23 @@ import { normalizeParentPath } from './archiveIndex.js';
 /** Shared collator for name/path sorts — avoid allocating options per compare. */
 const namePathCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
 
+/**
+ * Fast-path string comparison using pre-cached lower-case fields before
+ * falling back to Intl.Collator for accent/case resolution.
+ * @param {string} s1
+ * @param {string} s2
+ * @param {string | undefined} [s1Lower]
+ * @param {string | undefined} [s2Lower]
+ */
+function compareStringsFast(s1, s2, s1Lower, s2Lower) {
+  if (s1 === s2) return 0;
+  const l1 = s1Lower !== undefined ? s1Lower : s1.toLowerCase();
+  const l2 = s2Lower !== undefined ? s2Lower : s2.toLowerCase();
+  if (l1 < l2) return -1;
+  if (l1 > l2) return 1;
+  return namePathCollator.compare(s1, s2);
+}
+
 /** @param {string} input */
 export function normalizeExtension(input) {
   if (typeof input !== 'string') return '';
@@ -33,14 +50,14 @@ export function normalizeExtension(input) {
  * @param {ArchiveEntry} entry
  */
 function entryNameLower(entry) {
-  return (entry.name || '').toLowerCase();
+  return entry.nameLower !== undefined ? entry.nameLower : (entry.name || '').toLowerCase();
 }
 
 /**
  * @param {ArchiveEntry} entry
  */
 function entryPathLower(entry) {
-  return (entry.path || '').toLowerCase();
+  return entry.pathLower !== undefined ? entry.pathLower : (entry.path || '').toLowerCase();
 }
 
 /** @param {ArchiveEntry} entry @param {string} query */
@@ -128,11 +145,11 @@ export function compareEntries(a, b, sortKey, sortDir, foldersFirst, ratioByEntr
     }
     case 'name':
     default:
-      cmp = namePathCollator.compare(a.name || '', b.name || '');
+      cmp = compareStringsFast(a.name || '', b.name || '', a.nameLower, b.nameLower);
       break;
   }
   if (cmp === 0) {
-    cmp = namePathCollator.compare(a.path || '', b.path || '');
+    cmp = compareStringsFast(a.path || '', b.path || '', a.pathLower, b.pathLower);
   }
   return sortDir === 'desc' ? -cmp : cmp;
 }

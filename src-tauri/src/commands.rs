@@ -708,23 +708,29 @@ pub fn unregister_file_associations_command() -> Result<FileAssociationStatus, C
 static DRAG_SESSION_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static DRAG_ICON_BYTES: &[u8] = include_bytes!("../icons/32x32.png");
 
-struct PreparedDrag {
+struct StagingOperation {
     session_id: u64,
     archive_path: String,
     selected_paths: Vec<String>,
-    temp_dir: std::path::PathBuf,
-    disk_paths: Vec<std::path::PathBuf>,
+    result: std::sync::Arc<tokio::sync::Mutex<Option<Result<(std::path::PathBuf, Vec<std::path::PathBuf>), String>>>>,
+    notify: std::sync::Arc<tokio::sync::Notify>,
 }
 
-static PREPARED_DRAG: std::sync::Mutex<Option<PreparedDrag>> = std::sync::Mutex::new(None);
+static ACTIVE_STAGING: std::sync::Mutex<Option<StagingOperation>> = std::sync::Mutex::new(None);
 
 /// Cancel any in-flight drag-out extraction or pending modal drag.
 #[command]
 pub fn cancel_drag_out() {
     DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    if let Ok(mut lock) = PREPARED_DRAG.lock() {
-        if let Some(p) = lock.take() {
-            let _ = std::fs::remove_dir_all(&p.temp_dir);
+    let old = {
+        let mut lock = ACTIVE_STAGING.lock().unwrap();
+        lock.take()
+    };
+    if let Some(op) = old {
+        if let Ok(guard) = op.result.try_lock() {
+            if let Some(Ok((ref temp_dir, _))) = *guard {
+                let _ = std::fs::remove_dir_all(temp_dir);
+            }
         }
     }
 }
@@ -737,6 +743,26 @@ pub async fn prepare_drag_out(
     password: Option<String>,
 ) -> Result<(), CommandError> {
     let session_id = DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let result_holder = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+    let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+
+    {
+        let mut lock = ACTIVE_STAGING.lock().unwrap();
+        if let Some(old) = lock.take() {
+            if let Ok(guard) = old.result.try_lock() {
+                if let Some(Ok((ref temp_dir, _))) = *guard {
+                    let _ = std::fs::remove_dir_all(temp_dir);
+                }
+            }
+        }
+        *lock = Some(StagingOperation {
+            session_id,
+            archive_path: archive_path.clone(),
+            selected_paths: selected_paths.clone(),
+            result: result_holder.clone(),
+            notify: notify.clone(),
+        });
+    }
 
     let archive_path_clone = archive_path.clone();
     let selected_paths_clone = selected_paths.clone();
@@ -745,22 +771,25 @@ pub async fn prepare_drag_out(
         crate::drag_out::stage_drag_files(Path::new(&archive_path_clone), &selected_paths_clone, password)
     })
     .await
-    .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
+    .map_err(|e| CommandError::new("worker_failed", e.to_string()))?;
 
     if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) == session_id {
-        let mut lock = PREPARED_DRAG.lock().unwrap();
-        if let Some(old) = lock.take() {
-            let _ = std::fs::remove_dir_all(&old.temp_dir);
+        match res {
+            Ok(tuple) => {
+                let mut guard = result_holder.lock().await;
+                *guard = Some(Ok(tuple));
+                notify.notify_waiters();
+            }
+            Err(e) => {
+                let mut guard = result_holder.lock().await;
+                *guard = Some(Err(e.message));
+                notify.notify_waiters();
+            }
         }
-        *lock = Some(PreparedDrag {
-            session_id,
-            archive_path,
-            selected_paths,
-            temp_dir: res.0,
-            disk_paths: res.1,
-        });
     } else {
-        let _ = std::fs::remove_dir_all(&res.0);
+        if let Ok((temp_dir, _)) = res {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+        }
     }
 
     Ok(())
@@ -775,14 +804,12 @@ pub async fn start_drag_out(
     selected_paths: Vec<String>,
     password: Option<String>,
 ) -> Result<(), CommandError> {
-    // Check if we already have a prepared staging for these exact files:
-    let prepared = {
-        let mut lock = PREPARED_DRAG.lock().unwrap();
-        if let Some(p) = lock.take() {
-            if p.archive_path == archive_path && p.selected_paths == selected_paths {
-                Some(p)
+    let staging_op = {
+        let lock = ACTIVE_STAGING.lock().unwrap();
+        if let Some(ref op) = *lock {
+            if op.archive_path == archive_path && op.selected_paths == selected_paths {
+                Some((op.session_id, op.result.clone(), op.notify.clone()))
             } else {
-                let _ = std::fs::remove_dir_all(&p.temp_dir);
                 None
             }
         } else {
@@ -790,12 +817,36 @@ pub async fn start_drag_out(
         }
     };
 
-    let (temp_dir, disk_paths, session_id) = if let Some(p) = prepared {
-        (p.temp_dir, p.disk_paths, p.session_id)
+    let (temp_dir, disk_paths, session_id) = if let Some((sid, result_holder, notify)) = staging_op {
+        loop {
+            if DRAG_SESSION_COUNTER.load(std::sync::atomic::Ordering::SeqCst) != sid {
+                return Ok(());
+            }
+            {
+                let guard = result_holder.lock().await;
+                if let Some(ref res) = *guard {
+                    match res {
+                        Ok((t, d)) => {
+                            let res_tuple = (t.clone(), d.clone(), sid);
+                            let mut lock = ACTIVE_STAGING.lock().unwrap();
+                            let _ = lock.take();
+                            break res_tuple;
+                        }
+                        Err(msg) => return Err(CommandError::new("drag_staging_failed", msg.clone())),
+                    }
+                }
+            }
+            tokio::select! {
+                _ = notify.notified() => {},
+                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+            }
+        }
     } else {
         let session_id = DRAG_SESSION_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let archive_path_clone = archive_path.clone();
+        let selected_paths_clone = selected_paths.clone();
         let (t, d) = tauri::async_runtime::spawn_blocking(move || {
-            crate::drag_out::stage_drag_files(Path::new(&archive_path), &selected_paths, password)
+            crate::drag_out::stage_drag_files(Path::new(&archive_path_clone), &selected_paths_clone, password)
         })
         .await
         .map_err(|e| CommandError::new("worker_failed", e.to_string()))??;
