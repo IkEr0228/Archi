@@ -5,28 +5,29 @@ use archi_backend_lib::cli_open::resolve_cli_archive_path;
 use archi_backend_lib::commands::{self, StartupCliPath};
 use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-#[derive(Clone, serde::Serialize)]
-struct CliOpenPayload {
-    path: Option<String>,
-}
-
 fn main() {
     tauri::Builder::default()
-        // Single-instance must register first so secondary launches exit cleanly.
+        // Single-instance: spawn new window with the opened archive or focus active window.
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             let path = resolve_cli_archive_path(&argv, std::path::Path::new(&cwd))
                 .map(|p| p.to_string_lossy().into_owned());
-            if let Err(error) = app.emit("cli-open", CliOpenPayload { path }) {
-                eprintln!("Failed to emit cli-open: {error}");
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
+            if let Some(archive_path) = path {
+                if let Err(error) = archi_backend_lib::window_manager::create_new_window(app, Some(archive_path)) {
+                    eprintln!("Failed to spawn new window: {error}");
+                }
+            } else {
+                let windows = app.webview_windows();
+                if let Some(window) = windows.values().find(|w| w.is_focused().unwrap_or(false)).or_else(|| windows.values().next()) {
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                } else if let Err(error) = archi_backend_lib::window_manager::create_new_window(app, None) {
+                    eprintln!("Failed to spawn blank window: {error}");
+                }
             }
         }))
         .plugin(tauri_plugin_dialog::init())
@@ -44,8 +45,13 @@ fn main() {
 
             archi_backend_lib::drag_out::cleanup_old_drag_temp_dirs();
 
-            // Opaque window + no acrylic: fastest create/show path on Windows.
+            // Restore saved window state for main window if available:
             if let Some(window) = app.get_webview_window("main") {
+                if let Some(saved) = archi_backend_lib::window_manager::load_window_state(app.handle()) {
+                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(saved.x, saved.y)));
+                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(saved.width, saved.height)));
+                }
+                archi_backend_lib::window_manager::attach_window_state_saver(&window);
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
@@ -79,6 +85,7 @@ fn main() {
             commands::start_drag_out,
             commands::prepare_drag_out,
             commands::cancel_drag_out,
+            commands::create_new_window_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

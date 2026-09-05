@@ -36,6 +36,12 @@
     if (clean.includes('EXTRACTING')) return 'EXTRACTING...';
     return clean;
   });
+
+  // Keep OS Taskbar & Alt+Tab title synchronized
+  $effect(() => {
+    const title = archiveName ? `${archiveName} — Archi` : 'Archi';
+    void appWindow.setTitle(title).catch(() => {});
+  });
 </script>
 
 <div class="titlebar" data-tauri-drag-region>

@@ -888,3 +888,14 @@ pub async fn start_drag_out(
 
     res.map_err(|e| CommandError::new("drag_failed", e.to_string()))
 }
+
+#[command]
+pub async fn create_new_window_command(
+    app: AppHandle,
+    archive_path: Option<String>,
+) -> Result<(), CommandError> {
+    crate::window_manager::create_new_window(&app, archive_path)
+        .map(|_| ())
+        .map_err(|e| CommandError::new("window_create_failed", e))
+}
+

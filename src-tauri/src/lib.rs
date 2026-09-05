@@ -26,6 +26,7 @@ pub mod testing;
 pub mod xz_format;
 pub mod zip_cd;
 pub mod zip_edit;
+pub mod window_manager;
 pub mod zipper;
 
 #[cfg(windows)]

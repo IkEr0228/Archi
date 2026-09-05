@@ -1025,6 +1025,12 @@ html, body {
   color: var(--pastel-rose);
 }
 
+.close-confirm-subtext {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* Progress indicator styles */
 .progress-percent {
   margin-bottom: 8px;
