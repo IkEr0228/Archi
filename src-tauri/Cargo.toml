@@ -27,7 +27,7 @@ serde = { version = "1.0", features = ["derive"] }
 # zip 2.2+ required: 0.6.x cannot write AES-encrypted entries.
 zip = { version = "2.4", default-features = false, features = ["deflate", "aes-crypto"] }
 tar = "0.4"
-flate2 = "1"
+flate2 = { version = "1", features = ["zlib-rs"] }
 bzip2 = "0.5"
 xz2 = "0.1"
 # Slim features: smaller binary; LZMA/LZMA2 still available for open/create.
