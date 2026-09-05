@@ -33,14 +33,14 @@ export function normalizeExtension(input) {
  * @param {ArchiveEntry} entry
  */
 function entryNameLower(entry) {
-  return (entry.name || '').toLowerCase();
+  return entry.nameLower !== undefined ? entry.nameLower : (entry.name || '').toLowerCase();
 }
 
 /**
  * @param {ArchiveEntry} entry
  */
 function entryPathLower(entry) {
-  return (entry.path || '').toLowerCase();
+  return entry.pathLower !== undefined ? entry.pathLower : (entry.path || '').toLowerCase();
 }
 
 /** @param {ArchiveEntry} entry @param {string} query */

@@ -32,6 +32,12 @@ export function buildArchiveIndexes(entries) {
   const byPath = new Map();
   for (const entry of entries || []) {
     if (!entry || typeof entry.path !== 'string') continue;
+    if (entry.nameLower === undefined) {
+      entry.nameLower = (entry.name || '').toLowerCase();
+    }
+    if (entry.pathLower === undefined) {
+      entry.pathLower = entry.path.toLowerCase();
+    }
     byPath.set(entry.path, entry);
     const parent = normalizeParentPath(entry.parent_path);
     let list = byParent.get(parent);
