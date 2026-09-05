@@ -16,7 +16,7 @@ use crate::sevenz_format::create_sevenz_archive;
 use crate::sevenz_pack_copy::{
     assess_pack_copy_eligibility, pack_stream_rebuild, PackStreamMember,
 };
-use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
+use sevenz_rust2::encoder_options::AesEncoderOptions;
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
 use ahash::AHashMap;
 use std::collections::HashSet;
@@ -100,14 +100,7 @@ fn sz_cb_err(msg: impl Into<String>) -> sevenz_rust2::Error {
     sevenz_rust2::Error::Other(msg.into().into())
 }
 
-fn lzma2_level(preset: CompressionPreset) -> u32 {
-    match preset {
-        CompressionPreset::Store => 0,
-        CompressionPreset::Fast => 3,
-        CompressionPreset::Normal => 5,
-        CompressionPreset::Max => 9,
-    }
-}
+
 
 fn edit_compression(options: &EditOptions) -> CompressionPreset {
     options.compression.unwrap_or(CompressionPreset::Normal)
@@ -913,16 +906,15 @@ fn stream_rebuild(
 
     let total_files = planned.len() as u64;
     let (temp_path, temp_file) = create_temporary_archive(archive_path)?;
-    let level = lzma2_level(compression);
-
     let result = (|| -> Result<EditSummary, CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
+        let lzma2_opt = crate::sevenz_format::lzma2_options(compression);
         let methods = match password {
             Some(pw) => vec![
                 AesEncoderOptions::new(Password::new(pw)).into(),
-                Lzma2Options::from_level(level).into(),
+                lzma2_opt.into(),
             ],
-            None => vec![Lzma2Options::from_level(level).into()],
+            None => vec![lzma2_opt.into()],
         };
         writer.set_content_methods(methods);
 

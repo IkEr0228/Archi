@@ -692,6 +692,18 @@ fn lzma2_level(preset: CompressionPreset) -> u32 {
     }
 }
 
+pub(crate) fn lzma2_options(preset: CompressionPreset) -> Lzma2Options {
+    let level = lzma2_level(preset);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1);
+    if threads > 1 && level > 0 {
+        Lzma2Options::from_level_mt(level, threads, 1 << 21)
+    } else {
+        Lzma2Options::from_level(level)
+    }
+}
+
 /// Create a 7z archive. Uses solid LZMA2 for Normal/Max (best ratio); non-solid for Store/Fast.
 pub fn create_sevenz_archive(
     source_paths: &[String],
@@ -718,18 +730,16 @@ pub fn create_sevenz_archive(
     }
 
     let (temp_path, temp_file) = create_temporary_archive(&output_path)?;
-    // Max compression = LZMA2 level 9 (dictionary/effort). Per-file streams keep
-    // cancel responsive; solid packing can be added later if needed for tiny gains.
-    let level = lzma2_level(options.compression);
+    let lzma2_opt = lzma2_options(options.compression);
 
     let result = (|| -> Result<OperationSummary, CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
         let methods = if password.is_empty() {
-            vec![Lzma2Options::from_level(level).into()]
+            vec![lzma2_opt.into()]
         } else {
             vec![
                 AesEncoderOptions::new(password).into(),
-                Lzma2Options::from_level(level).into(),
+                lzma2_opt.into(),
             ]
         };
         writer.set_content_methods(methods);

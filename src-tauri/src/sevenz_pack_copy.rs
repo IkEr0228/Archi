@@ -11,7 +11,6 @@ use crate::create_common::{
 use crate::extraction::normalize_entry_name;
 use crate::models::{CommandError, CompressionPreset, EditSummary, OperationProgress};
 use crate::security::validate_entry_path;
-use sevenz_rust2::encoder_options::Lzma2Options;
 use sevenz_rust2::{
     Archive, ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, EncoderMethod, Password,
     SIGNATURE_HEADER_SIZE,
@@ -127,14 +126,6 @@ fn selection_matches(entry_path: &str, selected: &str) -> bool {
     entry_path == selected || entry_path.starts_with(&(selected.to_owned() + "/"))
 }
 
-fn lzma2_level(preset: CompressionPreset) -> u32 {
-    match preset {
-        CompressionPreset::Store => 0,
-        CompressionPreset::Fast => 3,
-        CompressionPreset::Normal => 5,
-        CompressionPreset::Max => 9,
-    }
-}
 
 /// Why pack-copy is not eligible for this archive / plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -452,13 +443,11 @@ pub fn pack_stream_rebuild(
 
     let total = planned.len() as u64;
     let (temp_path, temp_file) = create_temporary_archive(archive_path)?;
-    let level = lzma2_level(compression);
 
     let result = (|| -> Result<(EditSummary, PackCopyStats), CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
-        writer.set_encrypt_header(false);
-        // Content methods apply to newly encoded members only (NewFile).
-        writer.set_content_methods(vec![Lzma2Options::from_level(level).into()]);
+        let lzma2_opt = crate::sevenz_format::lzma2_options(compression);
+        writer.set_content_methods(vec![lzma2_opt.into()]);
 
         let mut source = File::open(archive_path).map_err(|e| {
             edit_error(
