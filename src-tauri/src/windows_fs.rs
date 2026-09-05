@@ -18,6 +18,7 @@ const FILE_CREATE: u32 = 2;
 const FILE_DIRECTORY_FILE: u32 = 0x1;
 const FILE_NON_DIRECTORY_FILE: u32 = 0x40;
 const FILE_SYNCHRONOUS_IO_NONALERT: u32 = 0x20;
+const FILE_SEQUENTIAL_ONLY: u32 = 0x0000_0004;
 const FILE_OPEN_REPARSE_POINT: u32 = 0x20_0000;
 const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 const FILE_LIST_DIRECTORY: u32 = 0x1;
@@ -275,7 +276,10 @@ impl Directory {
             name.to_vec(),
             0x4000_0000 | DELETE | SYNCHRONIZE,
             FILE_CREATE,
-            FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+            FILE_NON_DIRECTORY_FILE
+                | FILE_SYNCHRONOUS_IO_NONALERT
+                | FILE_OPEN_REPARSE_POINT
+                | FILE_SEQUENTIAL_ONLY,
         )?);
         created.push(CreatedEntry {
             handle: Arc::clone(&handle),

@@ -358,6 +358,7 @@ fn extract_one_file_windows(
     extract_root: &Path,
     destination: &Path,
     entry_path: &str,
+    expected_size: u64,
     mut reader: impl Read,
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -454,6 +455,9 @@ fn extract_one_file_windows(
     let output = parent
         .create_file(&temp_name, created)
         .map_err(|error| tar_error("write_failed", format!("Cannot create temp file: {error}")))?;
+    if expected_size > 0 {
+        let _ = output.as_ref().set_len(expected_size);
+    }
 
     let mut buffer = [0_u8; BUFFER_SIZE];
     {
@@ -506,6 +510,7 @@ fn extract_one_file_windows(
     _extract_root: &Path,
     destination: &Path,
     entry_path: &str,
+    expected_size: u64,
     mut reader: impl Read,
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -541,6 +546,9 @@ fn extract_one_file_windows(
     }
     let mut file = fs::File::create(&write_to)
         .map_err(|e| tar_error("write_failed", format!("Cannot create file: {e}")))?;
+    if expected_size > 0 {
+        let _ = file.set_len(expected_size);
+    }
     let mut buffer = [0_u8; BUFFER_SIZE];
     loop {
         if cancelled.load(Ordering::Relaxed) {
@@ -779,12 +787,14 @@ fn extract_tar_reader<R: Read>(
                 continue;
             }
 
+            let entry_size = header.size().unwrap_or(0);
             #[cfg(windows)]
             let written = extract_one_file_windows(
                 &root,
                 extract_root,
                 &dest,
                 &name,
+                entry_size,
                 &mut entry,
                 operation_id,
                 cancelled,
@@ -797,6 +807,7 @@ fn extract_tar_reader<R: Read>(
                 extract_root,
                 &dest,
                 &name,
+                entry_size,
                 &mut entry,
                 operation_id,
                 cancelled,

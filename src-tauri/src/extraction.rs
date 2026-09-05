@@ -455,6 +455,10 @@ fn extract_windows(
                         )
                     })?,
                 };
+                let entry_size = entry.size();
+                if entry_size > 0 {
+                    let _ = output.as_ref().set_len(entry_size);
+                }
                 let mut buffer = [0; BUFFER_SIZE];
                 {
                     let mut writer = output.as_ref();

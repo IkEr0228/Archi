@@ -399,6 +399,7 @@ pub fn extract_sevenz(
             &destination,
             &dest,
             &normalized,
+            entry.size,
             data,
             operation_id,
             cancelled,
@@ -411,6 +412,7 @@ pub fn extract_sevenz(
             &destination,
             &dest,
             &normalized,
+            entry.size,
             data,
             operation_id,
             cancelled,
@@ -492,6 +494,7 @@ fn write_extracted_file(
     extract_root: &Path,
     destination: &Path,
     entry_path: &str,
+    expected_size: u64,
     mut reader: impl Read,
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -584,6 +587,9 @@ fn write_extracted_file(
     let output = parent
         .create_file(&temp_name, created)
         .map_err(|error| sz_error("write_failed", format!("Cannot create temp file: {error}")))?;
+    if expected_size > 0 {
+        let _ = output.as_ref().set_len(expected_size);
+    }
     let mut buffer = [0_u8; BUFFER_SIZE];
     {
         let mut writer = output.as_ref();
@@ -630,6 +636,7 @@ fn write_extracted_file(
     _extract_root: &Path,
     destination: &Path,
     entry_path: &str,
+    expected_size: u64,
     mut reader: impl Read,
     operation_id: &str,
     cancelled: &AtomicBool,
@@ -665,6 +672,9 @@ fn write_extracted_file(
     }
     let mut file = fs::File::create(&write_to)
         .map_err(|e| sz_error("write_failed", format!("Cannot create file: {e}")))?;
+    if expected_size > 0 {
+        let _ = file.set_len(expected_size);
+    }
     let mut buffer = [0_u8; BUFFER_SIZE];
     loop {
         if cancelled.load(Ordering::Relaxed) {
