@@ -176,7 +176,6 @@ cargo test --manifest-path src-tauri/Cargo.toml            # Backend test suite 
 ## 🗺️ Documentation
 
 - **[`docs/STATUS.md`](docs/STATUS.md):** Project roadmap, phase progression, and release history.
-- **[`docs/PERFORMANCE_AUDIT.md`](docs/PERFORMANCE_AUDIT.md):** Detailed performance and optimization analysis.
 - **[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md):** Architecture, coding standards, and security conventions.
 - **[`SECURITY.md`](SECURITY.md):** Security policies and vulnerability reporting.
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md):** Guidelines for contributing to Archi.
