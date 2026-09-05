@@ -1,8 +1,8 @@
 # Archi development status
 
-**Last updated:** 2026-09-03  
+**Last updated:** 2026-09-06  
 **Branch:** `master`  
-**Latest release:** **v0.3.0**  
+**Latest release:** **v0.4.0**  
 **License:** MIT (see root `LICENSE`)  
 **Repository:** https://github.com/IkEr0228/Archi
 
@@ -18,6 +18,7 @@
 | **Phase 4.5** | Encrypted archives (AES-256 ZIP/7z), session password reuse | **Done (v0.2.1)** |
 | **Phase 5** | Native Drag-and-Drop extraction to Explorer/Desktop, unified internal/external DnD | **Done (v0.2.2)** |
 | **Phase 6** | Native RAR support (read/extract), engine optimizations (mimalloc, ahash, IPC payload), DnD performance | **Done (v0.3.0)** |
+| **Phase 7** | Multi-window architecture (Ctrl+N), cross-window Drag & Drop, window title synchronization, cascading layout | **Done (v0.4.0)** |
 
 ## What works today
 
@@ -52,12 +53,12 @@ npm run tauri build
 Release Rust profile: `src-tauri/Cargo.toml` → `[profile.release]` (LTO, strip, opt-level 3, panic=abort).  
 Frontend: Vite production minify.
 
-**Last measured release build (2026-09-03, v0.3.0):**
+**Last measured release build (2026-09-06, v0.4.0):**
 
 | Artifact | Path | Size |
 | --- | --- | --- |
-| EXE | `src-tauri/target/release/archi_backend.exe` | **7.26 MiB** (7 618 560 bytes) |
-| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.3.0_x64-setup.exe` | **2.26 MiB** (2 373 530 bytes) |
+| EXE | `src-tauri/target/release/archi.exe` | **7.65 MiB** (8 027 648 bytes) |
+| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.4.0_x64-setup.exe` | **2.35 MiB** (2 471 484 bytes) |
 
 ## Performance notes (UI look unchanged)
 

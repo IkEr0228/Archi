@@ -1,187 +1,189 @@
 # Archi
 
-**Windows archive manager** — open, browse, extract, create, test, and edit archives with a focus on **safe extraction** and a modern desktop UI.
+<div align="center">
 
-Built with [Tauri 2](https://v2.tauri.app/) (Rust backend) and [Svelte 5](https://svelte.dev/).
+**A modern, blazing-fast, and secure archive manager crafted for Windows.**  
+Open, browse, extract, create, and edit archives with effortless multi-window multitasking and native Drag & Drop.
 
-[![CI](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml/badge.svg)](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/IkEr0228/Archi?style=flat-square&color=38bdf8)](https://github.com/IkEr0228/Archi/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/IkEr0228/Archi/ci.yml?branch=master&style=flat-square&label=CI)](https://github.com/IkEr0228/Archi/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20x64-0078d4?style=flat-square)](https://github.com/IkEr0228/Archi/releases/latest)
+[![Powered by](https://img.shields.io/badge/Stack-Tauri%202%20%2B%20Rust%20%2B%20Svelte%205-ff3e00?style=flat-square)](https://v2.tauri.app/)
 
-## Screenshots
+<p align="center">
+  <a href="#-quick-download"><strong>📥 Download</strong></a> •
+  <a href="#-whats-new-in-v040"><strong>✨ What's New</strong></a> •
+  <a href="#-features"><strong>⚡ Features</strong></a> •
+  <a href="#-keyboard-shortcuts"><strong>⌨️ Shortcuts</strong></a> •
+  <a href="#-supported-formats"><strong>📦 Formats</strong></a> •
+  <a href="#-build-from-source"><strong>🛠️ Build</strong></a>
+</p>
 
-| Main window | Create archive (with password) | Password prompt |
-| --- | --- | --- |
-| ![Main window](screens/1.png) | ![Create archive](screens/2.png) | ![Password prompt](screens/3.png) |
+</div>
 
-## Features
+---
 
-- **Multi-format open/list/extract:** ZIP, RAR (RAR4 & RAR5), TAR, TAR.GZ, GZIP, TAR.BZ2, BZIP2, TAR.XZ, XZ, 7z
-- **Encrypted archives:** open, extract, test, and create **AES-256** password-protected ZIP and 7z; password-protected RAR extraction; interactive password modal with session reuse
-- **High-performance engine:** powered by `mimalloc` global allocator, hardware-accelerated `ahash` indexing, and optimized IPC serialization
-- **Create:** ZIP, TAR family, and 7z (LZMA2), with shared compression presets; TAR family + password produces a real AES-256 `.7z`
-- **Fast incremental edit:** ZIP in-place append + fast logical delete; 7z non-solid **pack-copy** (no full Max recompression); TAR stream rebuild
-- **In-archive reorganization:** drag entries into internal folders, parent breadcrumbs, or root (`Move`) with instant in-memory preview
-- **Drag & Drop extraction:** drag files and folders directly out of the archive into Windows Explorer, Desktop, or external apps (with transparent password decryption, speculative background pre-staging, and automatic temp cleanup)
-- **Explorer drop & integration:** drop files from Explorer into an open archive folder, drop archives to open, or drop multiple sources to create
-- **Test:** all open formats (ZIP, 7z, TAR family, single streams) — decompress/read integrity verification without writing user files
-- **Browse UX:** virtual folders, whole-archive search, type/extension filters, column sorting, virtualized table rendering
-- **Safe extract:** path validation, no archive symlink extract, no reparse traversal, Windows handle-relative writes
-- **Conflicts:** overwrite / skip / rename / cancel (+ apply to all)
-- **CLI + single-instance:** `archi.exe path\to\archive` opens in the running app
-- **Opt-in Explorer associations:** per-user (HKCU only) registration for all supported archive extensions
+## 📥 Quick Download
 
-## Format support
+Get the latest version of Archi for **Windows 10 / 11 (64-bit)**:
 
-| Format | Open / list | Extract | Create | Test | Edit | Encryption | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **ZIP** | Yes | Yes | Yes | Yes | Yes | AES-256 | Stored + Deflate. Encrypted listing works without password; extract/test prompt. Fast append add, logical delete, stream rebuild rename/move. |
-| **7z** | Yes | Yes | Yes | Yes | Yes | AES-256 | LZMA/LZMA2. Password prompt on open when headers are encrypted. Non-solid pack-copy (fast delete/move/replace without recompression), encryption preserved. |
-| **RAR** | Yes | Yes | No | No | No | Password | RAR4 and RAR5 formats via static `unrar` library (RARLAB source). Read and extract only (open-source license compliant). Password-protected archives supported. |
-| **TAR** | Yes | Yes | Yes | Yes | Yes | via .7z | Create = store. Edit = stream rebuild. Password request creates AES-256 7z instead. |
-| **TAR.GZ / TGZ** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
-| **TAR.BZ2 / TBZ2** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
-| **TAR.XZ / TXZ** | Yes | Yes | Yes | Yes | Yes | via .7z | Edit = stream rebuild (outer recompress). Password request creates AES-256 7z instead. |
-| **GZIP** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
-| **BZIP2** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
-| **XZ** (single) | Yes | Yes | No | Yes | No | No | Integrity stream test only. |
+| Distribution | Download Link | Description |
+| :--- | :--- | :--- |
+| **Installer** *(Recommended)* | [**`archi_0.4.0_x64-setup.exe`**](https://github.com/IkEr0228/Archi/releases/latest) | Complete setup with Start Menu shortcuts and uninstaller. |
+| **Portable** | [**`archi.exe`**](https://github.com/IkEr0228/Archi/releases/latest) | Standalone single-file binary. No installation required — run it from anywhere! |
 
-Capability flags from the backend dynamically drive the UI: unavailable actions stay disabled.
+> [!TIP]
+> **Windows SmartScreen note:** Since Archi is a free, open-source project without an expensive code-signing certificate, Windows SmartScreen may show a prompt on first run. Simply click **More info** → **Run anyway**.
 
-## Password-protected archives
+---
 
-- **Open/list:** encrypted 7z prompts immediately (headers are encrypted); encrypted ZIP lists entries (central directory is plaintext) and flags a warning; password-protected RAR lists headers and prompts when extraction is requested.
-- **Extract / test:** password prompt with **invalid password → try again**; a correct password is automatically reused for the session (extract, test, edit, drag-out).
-- **Create:** optional password field in the Create dialog — AES-256 for ZIP and 7z. For TAR-family formats there is no native encryption, so Archi warns and writes a real `.7z`.
-- **Edit on encrypted 7z:** add/rename/delete/move/replace/compact keep the archive encrypted with the same session password.
+## 📸 Preview
 
-## Drag & drop operations
+| Main Window (Dark Acrylic) | Create Archive (AES-256) | Password Prompt |
+| :---: | :---: | :---: |
+| ![Main Window](screens/1.png) | ![Create Archive](screens/2.png) | ![Password Prompt](screens/3.png) |
 
-### Dragging out of Archi
-- Select one or more files/folders in the archive table.
-- Drag directly into **Windows Explorer**, onto the **Desktop**, or into applications (Notepad, web browsers, Discord, etc.).
-- Utilizes native Windows OLE `CF_HDROP` integration with real embedded drag icons and speculative pre-staging on `pointerdown` for minimal latency.
-- Staged temporary files are automatically cleaned up in the background once external applications finish reading them.
+---
 
-### Dragging into Archi
-| Drop Target | Action |
-| --- | --- |
-| Exactly one archive path (no archive open) | Open that archive |
-| Files/folders while an **editable** archive is open | **Add into the current virtual folder** (breadcrumb path) |
-| Files/folders over internal folder rows or breadcrumbs | **Move entries into that target folder** |
-| Files/folders with no archive open | Open Create dialog with those paths as sources |
+## ✨ What's New in v0.4.0
 
-## Safety highlights
+- 🪟 **Multi-Window Workflow:** Open multiple archives in separate windows side-by-side. Compare contents, organize files, or work across multiple projects simultaneously.
+- 🔄 **Cross-Window Drag & Drop:** Drag files directly from one Archi window into another to extract and repack them into a different archive on the fly!
+- ⌨️ **Quick Window Creation (`Ctrl + N`):** Launch a clean, independent workspace instantly with `Ctrl + N` or the Titlebar `+` button.
+- 📌 **Window Title & Taskbar Sync:** Each window dynamically syncs its title with the open archive's filename across the Windows taskbar and system window previews.
+- 🪜 **Smart Cascading Placement:** New windows stagger position automatically so they never obstruct your active workspace.
+- 🛡️ **Accidental Close Guard:** Archi prompts before closing any window that has active compression, extraction, or editing tasks underway.
 
-- Entry paths checked for traversal, absolute/drive/UNC forms, and unsafe Windows device names (`CON`, `NUL`, `AUX`, etc.)
-- Archive symlinks rejected; filesystem reparse points not followed on extract/create sources
-- Extracted files are **never** executed or opened automatically
-- Create rejects output paths that are a source or lie inside a selected source tree
-- Long operations use operation IDs, cancellable progress, and automatic cleanup of partial output
-- Open-time risk assessment can gate extract behind an explicit **Continue** on suspicious metadata (zip bomb detection, extreme path depth)
+---
 
-## Requirements
+## ⚡ Key Features
 
-- **Windows** 10/11 x64 (primary target)
-- For building from source: Node.js 20+, Rust stable (MSVC), VS C++ build tools, [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/)
+### 🚀 Blazing Fast & Lightweight
+- **High-Performance Core:** Powered by Microsoft's `mimalloc` global memory allocator and hardware-accelerated `ahash` indexing for instant file listing and minimal memory footprint.
+- **Virtualized Rendering:** Smooth 60 FPS scrolling through archives containing tens of thousands of entries with Svelte 5 virtual list rendering.
+- **Slim Native Binary:** Clean desktop footprint under 10 MB with zero electron bloat.
 
-## Build from source
+### 🗂️ Universal Format Compatibility
+- **Full Reading & Extraction:** Open, navigate, search, and extract **ZIP**, **7z**, **RAR (RAR4 & RAR5)**, **TAR**, **TAR.GZ**, **TAR.BZ2**, and **TAR.XZ**.
+- **Archive Creation:** Create new **ZIP**, **7z (LZMA2)**, and **TAR** archives with configurable compression presets (Store, Fast, Normal, Maximum).
+- **Fast In-Place Editing:** Add files to existing ZIP archives with rapid in-place append; enjoy instant deletions in 7z via non-solid **pack-copy** without recompressing entire archives.
+
+### 🖱️ Seamless Drag & Drop
+- **Drag Out to Windows Explorer:** Drag files and folders straight out of Archi onto the Desktop, into Explorer folders, Discord, or text editors.
+- **Speculative Pre-staging:** Backend decompressions begin speculatively on mouse press (`pointerdown`), delivering near-instant drop responses.
+- **Drag In to Pack or Move:** Drop external files into Archi to pack them into the current virtual directory, or drag entries internally between folders.
+- **Cross-Window Transfer:** Seamlessly transfer files between multiple open Archi windows.
+
+### 🔒 Safety & Strong Encryption
+- **Full AES-256 Encryption:** Open, create, and edit password-protected 7z and ZIP archives. Password-protected RAR archives are fully supported with session password reuse.
+- **Zip Bomb & Abuse Heuristics:** Built-in safeguards check expansion ratios (>1000:1), excessive path depths, and suspicious metadata before extraction.
+- **Strict Path Traversal Protection:** Absolute paths, drive letters, UNC paths, and dangerous Windows device names (`CON`, `PRN`, `AUX`, `NUL`, etc.) are neutralized.
+- **Handle-Relative Native Writes:** Decompression uses secure Windows handle-relative operations to prevent symlink/reparse-point directory escape attacks.
+
+### ⚙️ Windows Explorer Integration
+- **1-Click File Associations:** Opt-in per-user (`HKCU`) file associations for `.zip`, `.7z`, `.rar`, `.tar`, and more directly from the **Associations** toolbar dialog. Completely reversible with no administrator rights required.
+- **Single-Instance CLI:** Open archives from the command line (`archi.exe file.zip`) or file context menu seamlessly in the existing or new window.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| <kbd>Ctrl</kbd> + <kbd>O</kbd> | **Open Archive** dialog |
+| <kbd>Ctrl</kbd> + <kbd>N</kbd> | **New Window** |
+| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> | **Create Archive** dialog |
+| <kbd>Ctrl</kbd> + <kbd>F</kbd> | Focus archive search bar |
+| <kbd>Ctrl</kbd> + <kbd>A</kbd> | Select all entries in current view |
+| <kbd>Delete</kbd> | Delete selected files/folders (with confirmation) |
+| <kbd>F2</kbd> | Rename selected file or folder |
+| <kbd>Backspace</kbd> / <kbd>Alt</kbd> + <kbd>↑</kbd> | Navigate to parent folder |
+| <kbd>Enter</kbd> | Open highlighted folder / inspect entry |
+| <kbd>Esc</kbd> | Clear selection / close modal dialogs |
+
+---
+
+## 📦 Supported Formats Matrix
+
+| Format | Open & Browse | Extract | Create | In-Archive Edit | Encryption | Notes |
+| :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **ZIP** | ✅ | ✅ | ✅ | ✅ | **AES-256** | Stored + Deflate. Fast append add, logical delete, full compact rebuild. |
+| **7z** | ✅ | ✅ | ✅ | ✅ | **AES-256** | LZMA / LZMA2. Non-solid pack-copy (fast delete/move/replace without recompressing). |
+| **RAR** | ✅ | ✅ | ❌ | ❌ | **Password** | RAR4 and modern RAR5 support via official `unrar` engine. Read & extract only. |
+| **TAR** | ✅ | ✅ | ✅ | ✅ | via .7z | Stream rebuild. Password request creates encrypted `.7z` container. |
+| **TAR.GZ** | ✅ | ✅ | ✅ | ✅ | via .7z | Fast stream rebuild. Encrypted create writes `.7z`. |
+| **TAR.BZ2** | ✅ | ✅ | ✅ | ✅ | via .7z | Fast stream rebuild. Encrypted create writes `.7z`. |
+| **TAR.XZ** | ✅ | ✅ | ✅ | ✅ | via .7z | Fast stream rebuild. Encrypted create writes `.7z`. |
+| **GZ / BZ2 / XZ** | ✅ | ✅ | ❌ | ❌ | ❌ | Single-file compressed stream inspection, extraction, and integrity test. |
+
+---
+
+## 🖱️ Drag & Drop Guide
+
+| Source | Destination | Result |
+| :--- | :--- | :--- |
+| **Archi Table** | Desktop / Windows Explorer / App | **Extracts selected files** to that folder or opens them in the app. |
+| **Archi Table** | Another Archi Window | **Copies files directly** into the target archive. |
+| **Windows Explorer** | Open Editable Archive | **Adds dropped files** into the current virtual folder. |
+| **Windows Explorer** | Internal Folder / Breadcrumb | **Adds files directly** into that subfolder. |
+| **Archi Table** | Internal Folder in same window | **Moves selected entries** into that subfolder. |
+| **Windows Explorer** | Empty Archi Window | Opens the **Create Archive** dialog with selected paths pre-filled. |
+
+---
+
+## 🛠️ Build from Source
+
+### Prerequisites
+- **Operating System:** Windows 10 or 11 (x64)
+- **Node.js:** 20+ and `npm`
+- **Rust:** Stable toolchain (`x86_64-pc-windows-msvc`)
+- **Build Tools:** Visual Studio C++ Build Tools (with Windows SDK)
+
+### Quick Build
 
 ```powershell
+# 1. Clone repository
 git clone https://github.com/IkEr0228/Archi.git
 cd Archi
+
+# 2. Install dependencies
 npm install
-npm run tauri dev      # development
-npm run tauri build    # release + NSIS installer
+
+# 3. Run in development mode
+npm run tauri dev
+
+# 4. Build optimized production release
+npm run tauri build
 ```
 
-Release artifacts (after `npm run tauri build`):
+Production artifacts are written to:
+- **Portable EXE:** `src-tauri/target/release/archi_backend.exe` (rename to `archi.exe`)
+- **NSIS Installer:** `src-tauri/target/release/bundle/nsis/archi_0.4.0_x64-setup.exe`
 
-| Artifact | Typical path |
-| --- | --- |
-| Portable EXE | `src-tauri/target/release/archi_backend.exe` (renamed to `archi.exe` in releases) |
-| Installer | `src-tauri/target/release/bundle/nsis/archi_0.3.0_x64-setup.exe` |
-
-## Development checks
+### Running Quality Checks
 
 ```powershell
-npm run test:frontend
-npm run check
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo test --manifest-path src-tauri/Cargo.toml
+npm run test:frontend                                      # Frontend unit tests
+npm run check                                              # Svelte & TypeScript checks
+npm run build                                              # Frontend production build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check  # Rust code format check
+cargo test --manifest-path src-tauri/Cargo.toml            # Backend test suite (160+ tests)
 ```
 
-More detail: [`CONTRIBUTING.md`](CONTRIBUTING.md). Living status: [`docs/STATUS.md`](docs/STATUS.md).
+---
 
-## Command-line
+## 🗺️ Documentation
 
-```text
-archi.exe path\to\archive.zip
-```
+- **[`docs/STATUS.md`](docs/STATUS.md):** Project roadmap, phase progression, and release history.
+- **[`docs/PERFORMANCE_AUDIT.md`](docs/PERFORMANCE_AUDIT.md):** Detailed performance and optimization analysis.
+- **[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md):** Architecture, coding standards, and security conventions.
+- **[`SECURITY.md`](SECURITY.md):** Security policies and vulnerability reporting.
+- **[`CONTRIBUTING.md`](CONTRIBUTING.md):** Guidelines for contributing to Archi.
 
-Relative paths resolve against the process working directory. Archi is **single-instance**: a second launch forwards the path to the first process and exits.
+---
 
-## Extract conflict policy
+## 📄 License
 
-When a destination **file already exists**:
-
-| Choice | Behavior |
-| --- | --- |
-| **Overwrite** | Replace the regular file via secure temp + rename |
-| **Skip** | Leave existing; count as skipped |
-| **Rename** | Write as `stem (n).ext` |
-| **Cancel** | Stop and clean partials |
-| **Apply to all** | Remember Overwrite/Skip/Rename for this operation only |
-
-Hard fails (no modal): destination symlink/reparse, file↔directory conflicts, duplicate plan destinations.
-
-## Create archive options
-
-| Option | Default | Behavior |
-| --- | --- | --- |
-| **Format** | ZIP (picker) | ZIP, TAR family, 7z |
-| **Compression** | Normal | Store / Fast / Normal / Max (mapped per codec) |
-| **Include root folder** | On | Directory sources keep their folder name at archive root |
-| **Overwrite if exists** | Off | On: replace existing **regular file** only |
-
-## Edit archive
-
-- **ZIP:** fast append for new files, logical delete (marks deleted in central directory without rewriting), or full compact rebuild when requested.
-- **7z:** non-solid **pack-copy** (extracts and copies compressed pack streams directly, saving full recompression time); stream rebuild fallback for solid archives.
-- **TAR family:** stream rebuild without requiring a full unpacked temporary directory tree.
-- **RAR & Single-stream GZIP/BZIP2/XZ:** in-archive editing is disabled by design.
-
-| Action | Behavior |
-| --- | --- |
-| **Add** | Files/folders under current virtual folder |
-| **New Folder** | Empty directory entry |
-| **Rename** | File or folder (prefix rewrite for folders) |
-| **Delete** | Selection + recursive folder prefix |
-| **Replace** | One file’s content from disk |
-| **Move** | Drag and drop entry into any internal folder or breadcrumbs |
-
-## File associations (opt-in)
-
-Toolbar **Associations** registers Archi under **HKCU** only (not machine-wide, not installer-default). Reversible from the same dialog. Supports `.zip`, `.7z`, `.rar`, `.tar`, `.gz`, `.bz2`, `.xz`, and compound extensions.
-
-## Limitations
-
-- RAR creation/compression is disabled to adhere strictly to open-source licensing rules (reading and extraction are fully supported)
-- ZIP methods beyond Stored/Deflate are not decompressed
-- TAR-family formats have no native encryption — password-protected create falls back to 7z
-- Secure extract path is Windows-focused (utilizing native NTFS handle-relative writes)
-
-## Documentation map
-
-| Doc | Purpose |
-| --- | --- |
-| [`docs/STATUS.md`](docs/STATUS.md) | Phase / status snapshot |
-| [`docs/architecture/`](docs/architecture/) | Roadmap / architecture |
-| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Coding and security conventions |
-| [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute |
-
-## License
-
-[MIT](LICENSE) © 2026 [IKER](https://github.com/IkEr0228)
-
-Third-party crates and npm packages remain under their own licenses (see `Cargo.lock` / `package-lock.json`).
+This project is licensed under the [MIT License](LICENSE) © 2026 [IKER](https://github.com/IkEr0228).  
+Third-party libraries and crates remain under their respective licenses.
