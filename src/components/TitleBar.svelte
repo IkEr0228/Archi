@@ -49,7 +49,7 @@
 
 <div class="titlebar" data-tauri-drag-region>
   <div class="app-title" data-tauri-drag-region>
-    <span class="dot-indicator">●</span>
+    <img src="/favicon.png" alt="Archi" class="app-titlebar-icon" width="16" height="16" />
     <span class="monospace text-title title-brand">Archi // archive_manager</span>
     
     {#if archiveName}
@@ -76,6 +76,15 @@
 </div>
 
 <style>
+  .app-titlebar-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    margin-right: 8px;
+    flex-shrink: 0;
+    pointer-events: none;
+    vertical-align: middle;
+  }
   .title-brand {
     flex-shrink: 0;
     white-space: nowrap;
