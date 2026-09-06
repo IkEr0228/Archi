@@ -8,7 +8,7 @@
     compression = "normal",
     includeRoot = true,
     overwrite = false,
-    outputPath = "",
+    outputPath = $bindable(""),
     password = $bindable(""),
     busy = false,
     onFormat,
@@ -24,7 +24,7 @@
     compression: Compression;
     includeRoot: boolean;
     overwrite: boolean;
-    outputPath: string;
+    outputPath?: string;
     password?: string;
     busy?: boolean;
     onFormat: (v: CreateFormat) => void;
@@ -47,9 +47,27 @@
     format === "tar" || format === "tarGz" || format === "tarBz2" || format === "tarXz"
   );
   const supportsEncryption = $derived(format === "zip" || format === "sevenZ");
+
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.key === "Enter" && canCreate) {
+      event.preventDefault();
+      onCreate();
+    } else if (event.key === "Escape" && !busy) {
+      event.preventDefault();
+      onCancel();
+    }
+  }
 </script>
 
-<div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+  class="modal-overlay"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="create-dialog-title"
+  tabindex="-1"
+  onkeydown={handleKeyDown}
+>
   <div class="modal-content create-dialog">
     <div id="create-dialog-title" class="modal-header monospace">CREATE ARCHIVE</div>
     <div class="modal-body monospace create-body">
@@ -77,8 +95,15 @@
         </select>
       </div>
       <div class="create-field create-output-row">
-        <span class="create-label">Output</span>
-        <span class="create-value create-path" title={outputPath}>{outputPath || '(choose save path)'}</span>
+        <label class="create-label" for="create-output">Output</label>
+        <input
+          id="create-output"
+          type="text"
+          class="create-input create-path-input"
+          bind:value={outputPath}
+          placeholder="(choose save path)"
+          disabled={busy}
+        />
         <button type="button" class="create-browse" onclick={onBrowseOutput} disabled={busy}>Browse…</button>
       </div>
       <div class="create-field">

@@ -94,13 +94,13 @@ pub fn get_app_name() -> String {
 /// Archive path from the first process argv, if any.
 #[command]
 pub fn get_startup_cli_path(state: State<'_, StartupCliPath>) -> Option<String> {
-    state.0.lock().ok().and_then(|guard| guard.clone())
+    state.0.lock().ok().and_then(|mut guard| guard.take())
 }
 
 /// Create source paths from the first process argv, if any.
 #[command]
 pub fn get_startup_cli_create(state: State<'_, StartupCliCreate>) -> Option<Vec<String>> {
-    state.0.lock().ok().and_then(|guard| guard.clone())
+    state.0.lock().ok().and_then(|mut guard| guard.take())
 }
 
 /// Quick create startup source and format from the first process argv, if any.
@@ -127,6 +127,10 @@ pub fn get_quick_archive_destination(
     let stem = source_stem(&clean);
     let ext = match format.to_lowercase().as_str() {
         "sevenz" | "7z" => "7z",
+        "tar" => "tar",
+        "targz" | "tar.gz" => "tar.gz",
+        "tarbz2" | "tar.bz2" => "tar.bz2",
+        "tarxz" | "tar.xz" => "tar.xz",
         _ => "zip",
     };
     let base_output = parent.join(format!("{stem}.{ext}"));

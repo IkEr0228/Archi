@@ -1166,8 +1166,18 @@ button.create-primary {
 .create-path {
   font-size: 0.85em;
 }
+.create-output-row {
+  flex-wrap: nowrap;
+}
+.create-output-row .create-path-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  font-size: 0.85em;
+}
 .create-output-row .create-browse {
-  margin-left: auto;
+  flex-shrink: 0;
+  margin-left: 0.25rem;
 }
 .create-hint {
   margin: 0;

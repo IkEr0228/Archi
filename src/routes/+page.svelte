@@ -26,6 +26,7 @@
   import { buildArchiveIndexes } from '../lib/archiveIndex.js';
   import { formatInvokeError } from '../lib/invokeError.js';
   import {
+    defaultExtensionForCreateFormat,
     ensureCreateExtension,
     isArchivePath,
     withCreateExtension,
@@ -597,9 +598,9 @@
     const initialArchive = urlParams.get('archive');
 
     if (initialCreateAuto) {
-      void startQuickCreate(initialCreateAuto, initialFormat);
+      void openCreateModal([initialCreateAuto], initialFormat);
     } else if (initialCreate) {
-      openCreateModal([initialCreate]);
+      void openCreateModal([initialCreate], 'zip');
     } else if (initialArchive) {
       openArchiveAtPath(initialArchive);
     } else {
@@ -608,12 +609,12 @@
         try {
           const quick = await invoke<{ source: string; format: string } | null>('get_startup_cli_quick');
           if (quick) {
-            void startQuickCreate(quick.source, (quick.format || 'zip') as 'zip' | 'sevenZ');
+            void openCreateModal([quick.source], (quick.format || 'zip') as any);
             return;
           }
           const createSources = await invoke<string[] | null>('get_startup_cli_create');
           if (createSources && createSources.length > 0) {
-            openCreateModal(createSources);
+            void openCreateModal(createSources, 'zip');
             return;
           }
           const path = await invoke<string | null>('get_startup_cli_path');
@@ -960,21 +961,43 @@
     }
   }
 
-  function resetCreateOptions() {
-    createFormat = 'zip';
-    createCompression = 'normal';
-    createIncludeRoot = true;
-    createOverwrite = false;
-    createOutputPath = '';
-    createPassword = '';
-  }
-
-  function openCreateModal(sources: string[]) {
+  async function openCreateModal(
+    sources: string[],
+    initialFormat: 'zip' | 'tar' | 'tarGz' | 'tarBz2' | 'tarXz' | 'sevenZ' = 'zip'
+  ) {
     if (activeOperation || !sources.length) return;
     createSources = sources;
-    resetCreateOptions();
-    showCreateModal = true;
+    createFormat = initialFormat;
+    if (initialFormat === 'sevenZ') {
+      createCompression = 'max';
+    } else if (initialFormat === 'tar') {
+      createCompression = 'store';
+    } else {
+      createCompression = 'normal';
+    }
+    createIncludeRoot = true;
+    createOverwrite = false;
+    createPassword = '';
     errorMessage = '';
+
+    // Synchronously pre-fill output path so dialog opens with path already filled:
+    const first = sources[0].replace(/[\\/]+$/, '');
+    const ext = defaultExtensionForCreateFormat(initialFormat);
+    createOutputPath = `${first}.${ext}`;
+    showCreateModal = true;
+
+    // Refine output path with collision-safe naming from backend:
+    try {
+      const suggested = await invoke<string>('get_quick_archive_destination', {
+        sourcePath: sources[0],
+        format: initialFormat
+      });
+      if (suggested) {
+        createOutputPath = suggested;
+      }
+    } catch {
+      // Synchronous fallback already populated
+    }
   }
 
   function handleCreateFormatChange(format: 'zip' | 'tar' | 'tarGz' | 'tarBz2' | 'tarXz' | 'sevenZ') {
@@ -995,7 +1018,7 @@
     try {
       const sources = await invoke<string[] | null>('select_multiple_files');
       if (!sources || sources.length === 0) return;
-      openCreateModal(sources);
+      void openCreateModal(sources);
     } catch (e: any) {
       errorMessage = `Could not select sources: ${formatInvokeError(e)}`;
     }
@@ -1061,62 +1084,6 @@
         applyToAllChecked = false;
         activeOperation = null;
       }
-    }
-  }
-
-  async function startQuickCreate(sourcePath: string, format: 'zip' | 'sevenZ') {
-    if (activeOperation || !sourcePath) return;
-    try {
-      const destination = await invoke<string>('get_quick_archive_destination', {
-        sourcePath,
-        format
-      });
-      if (!destination) return;
-
-      const sources = [sourcePath];
-      const compression = format === 'sevenZ' ? 'max' : 'normal';
-      const options = {
-        format,
-        compression,
-        includeRoot: true,
-        overwrite: false,
-        password: null
-      };
-
-      let operationId: string | null = null;
-      try {
-        operationStatus = 'Creating archive...';
-        errorMessage = '';
-        operationId = crypto.randomUUID();
-        activeOperation = { id: operationId, kind: 'create' };
-        showProgressModal = true;
-        progressPercentage = 0;
-        progressPhase = '';
-        progressText = 'Starting archive creation...';
-
-        const summary = await invoke<OperationSummary>('create_archive_command', {
-          sourcePaths: sources,
-          outputZipPath: destination,
-          operationId,
-          options
-        });
-        if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
-        operationStatus = `Created ${summary.extracted_files} entries at: ${summary.destination}`;
-        await openArchiveAtPath(summary.destination);
-      } catch (e: any) {
-        if (operationId && activeOperation?.id !== operationId) return;
-        errorMessage = `Archive creation failed: ${formatInvokeError(e)}`;
-        operationStatus = 'Error';
-      } finally {
-        if (operationId && activeOperation?.id === operationId) {
-          showProgressModal = false;
-          conflictPrompt = null;
-          applyToAllChecked = false;
-          activeOperation = null;
-        }
-      }
-    } catch (e: any) {
-      errorMessage = `Could not prepare archive destination: ${formatInvokeError(e)}`;
     }
   }
 
@@ -1361,7 +1328,7 @@
       openArchiveAtPath(paths[0]);
       return;
     }
-    openCreateModal(paths);
+    void openCreateModal(paths);
   }
 
   async function handleAddToArchive() {
@@ -1720,7 +1687,7 @@
     compression={createCompression}
     includeRoot={createIncludeRoot}
     overwrite={createOverwrite}
-    outputPath={createOutputPath}
+    bind:outputPath={createOutputPath}
     bind:password={createPassword}
     busy={!!activeOperation}
     onFormat={handleCreateFormatChange}
