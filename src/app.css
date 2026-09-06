@@ -238,7 +238,7 @@ html, body {
   transform: none;
 }
 
-.toolbar button, .parent-btn, .empty-state button, .error-banner-dismiss, .warning-banner-continue, .modal-footer button {
+.toolbar button, .parent-btn, .empty-state button, .error-banner-dismiss, .warning-banner-continue, .modal-footer button, .modal-content button, .action-btn, .create-browse {
   background: var(--bg-hover);
   border: 1.5px dashed var(--border-color);
   color: var(--text-main);
@@ -252,24 +252,24 @@ html, body {
   outline: none;
 }
 
-.toolbar button:hover:not(:disabled), .parent-btn:hover:not(:disabled), .empty-state button:hover:not(:disabled), .error-banner-dismiss:hover:not(:disabled), .warning-banner-continue:hover:not(:disabled), .modal-footer button:hover:not(:disabled) {
+.toolbar button:hover:not(:disabled), .parent-btn:hover:not(:disabled), .empty-state button:hover:not(:disabled), .error-banner-dismiss:hover:not(:disabled), .warning-banner-continue:hover:not(:disabled), .modal-footer button:hover:not(:disabled), .modal-content button:hover:not(:disabled), .action-btn:hover:not(:disabled), .create-browse:hover:not(:disabled) {
   color: var(--pastel-rose);
   border-color: var(--pastel-rose);
   background: var(--bg-active);
   transform: translateY(-1px);
 }
 
-.toolbar button:active:not(:disabled), .parent-btn:active:not(:disabled), .empty-state button:active:not(:disabled), .error-banner-dismiss:active:not(:disabled), .warning-banner-continue:active:not(:disabled), .modal-footer button:active:not(:disabled) {
+.toolbar button:active:not(:disabled), .parent-btn:active:not(:disabled), .empty-state button:active:not(:disabled), .error-banner-dismiss:active:not(:disabled), .warning-banner-continue:active:not(:disabled), .modal-footer button:active:not(:disabled), .modal-content button:active:not(:disabled), .action-btn:active:not(:disabled), .create-browse:active:not(:disabled) {
   transform: translateY(0);
 }
 
-.toolbar button:disabled, .parent-btn:disabled, .empty-state button:disabled, .error-banner-dismiss:disabled, .warning-banner-continue:disabled, .modal-footer button:disabled {
+.toolbar button:disabled, .parent-btn:disabled, .empty-state button:disabled, .error-banner-dismiss:disabled, .warning-banner-continue:disabled, .modal-footer button:disabled, .modal-content button:disabled, .action-btn:disabled, .create-browse:disabled {
   opacity: 0.35;
   cursor: not-allowed;
   transform: none;
 }
 
-.toolbar button:focus-visible, .parent-btn:focus-visible, .empty-state button:focus-visible, .error-banner-dismiss:focus-visible, .warning-banner-continue:focus-visible, .modal-footer button:focus-visible {
+.toolbar button:focus-visible, .parent-btn:focus-visible, .empty-state button:focus-visible, .error-banner-dismiss:focus-visible, .warning-banner-continue:focus-visible, .modal-footer button:focus-visible, .modal-content button:focus-visible, .action-btn:focus-visible, .create-browse:focus-visible {
   outline: 1.5px dotted var(--pastel-rose);
 }
 
@@ -968,7 +968,12 @@ html, body {
   gap: 10px;
 }
 
-.modal-footer button.primary {
+.modal-footer button.primary,
+.modal-footer button.create-primary,
+.modal-content button.primary,
+.modal-content button.create-primary,
+button.primary,
+button.create-primary {
   border-color: var(--pastel-rose);
   color: var(--pastel-rose);
 }

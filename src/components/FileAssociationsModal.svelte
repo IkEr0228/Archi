@@ -82,7 +82,7 @@
           </button>
           <button
             type="button"
-            class="action-btn create-primary"
+            class="action-btn primary"
             onclick={onEnable}
             disabled={busy || !status.supported}
           >
@@ -128,7 +128,7 @@
           </button>
           <button
             type="button"
-            class="action-btn create-primary"
+            class="action-btn primary"
             onclick={onEnableContextMenu}
             disabled={busy || !contextMenuStatus.supported}
           >
@@ -142,7 +142,7 @@
 
     <div class="modal-footer assoc-footer">
       <button type="button" onclick={onRefresh} disabled={busy}>Refresh Status</button>
-      <button type="button" class="create-primary" onclick={onClose} disabled={busy}>Close</button>
+      <button type="button" class="primary" onclick={onClose} disabled={busy}>Close</button>
     </div>
   </div>
 </div>
@@ -158,18 +158,54 @@
   }
   .section-divider {
     border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px dashed rgba(255, 255, 255, 0.12);
     margin: 0.8rem 0;
   }
   .section-actions {
     display: flex;
     gap: 0.5rem;
     justify-content: flex-end;
-    margin-top: 0.4rem;
+    margin-top: 0.5rem;
   }
   .action-btn {
-    font-size: 0.78rem;
-    padding: 0.35rem 0.75rem;
+    background: var(--bg-hover);
+    border: 1.5px dashed var(--border-color);
+    color: var(--text-main);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    outline: none;
+    white-space: nowrap;
+  }
+  .action-btn:hover:not(:disabled) {
+    color: var(--pastel-rose);
+    border-color: var(--pastel-rose);
+    background: var(--bg-active);
+    transform: translateY(-1px);
+  }
+  .action-btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  .action-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .action-btn:focus-visible {
+    outline: 1.5px dotted var(--pastel-rose);
+  }
+  .action-btn.primary {
+    border-color: var(--pastel-rose);
+    color: var(--pastel-rose);
+  }
+  .action-btn.primary:hover:not(:disabled) {
+    border-color: var(--pastel-rose);
+    color: var(--pastel-rose);
+    background: var(--bg-active);
   }
   .assoc-footer {
     display: flex;
