@@ -75,14 +75,14 @@
   .link-btn:hover {
     text-decoration: underline;
   }
-  :global(.breadcrumbs-item.drop-folder) {
+  .breadcrumbs-item:global(.drop-folder) {
     outline: 1.5px dashed var(--pastel-mint);
     outline-offset: 2px;
     border-radius: 3px;
     background: rgba(155, 233, 223, 0.12);
   }
-  :global(.breadcrumbs-item.drop-folder) .link-btn,
-  :global(.breadcrumbs-item.drop-folder) > span:not(.separator) {
+  .breadcrumbs-item:global(.drop-folder) .link-btn,
+  .breadcrumbs-item:global(.drop-folder) > span:not(.separator) {
     color: var(--pastel-mint);
   }
 </style>

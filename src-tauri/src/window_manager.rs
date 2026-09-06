@@ -67,7 +67,7 @@ pub fn capture_and_save_window_state(window: &WebviewWindow) {
 pub fn attach_window_state_saver(window: &WebviewWindow) {
     let w = window.clone();
     window.on_window_event(move |event| {
-        if let WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed = event {
+        if let WindowEvent::CloseRequested { .. } = event {
             capture_and_save_window_state(&w);
         }
     });
@@ -151,7 +151,7 @@ pub fn create_new_window_with_target(
         .find(|w| w.is_focused().unwrap_or(false))
         .or_else(|| windows.values().next());
 
-    let (pos, size) = if let Some(ref w) = reference_window {
+    let (pos, size) = if let Some(w) = reference_window {
         let cur_pos = w
             .outer_position()
             .unwrap_or(PhysicalPosition::new(100, 100));
