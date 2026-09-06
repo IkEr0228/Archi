@@ -49,15 +49,42 @@ pub fn archive_stem(path: &Path) -> String {
     filename.to_string()
 }
 
+/// Clean and resolve raw path argument from CLI/shell invocation.
+/// Strips quotes, handles trailing slashes, and resolves relative paths.
+pub fn clean_arg_path(arg: &str, cwd: &Path) -> PathBuf {
+    let trimmed = arg.trim().trim_matches('"').trim();
+    let without_trailing =
+        if trimmed.len() > 3 && (trimmed.ends_with('\\') || trimmed.ends_with('/')) {
+            trimmed.trim_end_matches(['\\', '/'])
+        } else {
+            trimmed
+        };
+    let p = PathBuf::from(without_trailing);
+    if p.is_absolute() {
+        p
+    } else {
+        cwd.join(p)
+    }
+}
+
 /// Compute archive base stem from any input source (file or directory).
 pub fn source_stem(path: &Path) -> String {
-    if path.is_dir() {
-        path.file_name()
+    let s = path.to_string_lossy();
+    let trimmed = s.trim().trim_matches('"').trim();
+    let without_trailing =
+        if trimmed.len() > 3 && (trimmed.ends_with('\\') || trimmed.ends_with('/')) {
+            trimmed.trim_end_matches(['\\', '/'])
+        } else {
+            trimmed
+        };
+    let p = Path::new(without_trailing);
+    if p.is_dir() {
+        p.file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("archive")
             .to_string()
     } else {
-        path.file_stem()
+        p.file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("archive")
             .to_string()
@@ -113,10 +140,7 @@ pub fn parse_cli_action(args: &[String], cwd: &Path) -> CliAction {
         } else if arg == "--add-7z" {
             add_7z = true;
         } else if !arg.starts_with('-') {
-            let p = PathBuf::from(arg);
-            let resolved = if p.is_absolute() { p } else { cwd.join(p) };
-            let canonical = resolved.canonicalize().unwrap_or(resolved);
-            target_paths.push(canonical);
+            target_paths.push(clean_arg_path(arg, cwd));
         }
     }
 
@@ -208,15 +232,17 @@ pub fn execute_cli_extraction(
 
 /// Execute 1-click compression to .zip.
 pub fn execute_cli_add_zip(source_path: &Path) -> Result<PathBuf, CommandError> {
-    if !source_path.exists() {
+    let clean_source_buf = clean_arg_path(&source_path.to_string_lossy(), Path::new("."));
+    let clean_source = clean_source_buf.as_path();
+    if !clean_source.exists() {
         return Err(CommandError::new(
             "not_found",
             format!("Source path does not exist: {}", source_path.display()),
         ));
     }
 
-    let parent = source_path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = source_stem(source_path);
+    let parent = clean_source.parent().unwrap_or_else(|| Path::new("."));
+    let stem = source_stem(clean_source);
     let base_output = parent.join(format!("{stem}.zip"));
     let output_path = unique_archive_path(&base_output);
 
@@ -230,7 +256,7 @@ pub fn execute_cli_add_zip(source_path: &Path) -> Result<PathBuf, CommandError> 
             .as_millis()
     );
 
-    let source_str = source_path.to_string_lossy().into_owned();
+    let source_str = clean_source.to_string_lossy().into_owned();
     create_zip_archive(
         &[source_str],
         &output_path,
@@ -246,15 +272,17 @@ pub fn execute_cli_add_zip(source_path: &Path) -> Result<PathBuf, CommandError> 
 
 /// Execute 1-click compression to .7z.
 pub fn execute_cli_add_7z(source_path: &Path) -> Result<PathBuf, CommandError> {
-    if !source_path.exists() {
+    let clean_source_buf = clean_arg_path(&source_path.to_string_lossy(), Path::new("."));
+    let clean_source = clean_source_buf.as_path();
+    if !clean_source.exists() {
         return Err(CommandError::new(
             "not_found",
             format!("Source path does not exist: {}", source_path.display()),
         ));
     }
 
-    let parent = source_path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = source_stem(source_path);
+    let parent = clean_source.parent().unwrap_or_else(|| Path::new("."));
+    let stem = source_stem(clean_source);
     let base_output = parent.join(format!("{stem}.7z"));
     let output_path = unique_archive_path(&base_output);
 
@@ -268,7 +296,7 @@ pub fn execute_cli_add_7z(source_path: &Path) -> Result<PathBuf, CommandError> {
             .as_millis()
     );
 
-    let source_str = source_path.to_string_lossy().into_owned();
+    let source_str = clean_source.to_string_lossy().into_owned();
     create_sevenz_archive(
         &[source_str],
         &output_path,
@@ -365,6 +393,31 @@ mod tests {
         assert_eq!(
             source_stem(Path::new(r"C:\work\folder_name")),
             "folder_name"
+        );
+        assert_eq!(
+            source_stem(Path::new(r"C:\work\folder_name\")),
+            "folder_name"
+        );
+        assert_eq!(
+            source_stem(Path::new(r#""C:\work\folder_name\""#)),
+            "folder_name"
+        );
+    }
+
+    #[test]
+    fn test_clean_arg_path() {
+        let cwd = Path::new(r"C:\work");
+        assert_eq!(
+            clean_arg_path(r#""C:\work\folder\""#, cwd),
+            PathBuf::from(r"C:\work\folder")
+        );
+        assert_eq!(
+            clean_arg_path(r#"C:\work\folder\"#, cwd),
+            PathBuf::from(r"C:\work\folder")
+        );
+        assert_eq!(
+            clean_arg_path(r#""C:\work\folder""#, cwd),
+            PathBuf::from(r"C:\work\folder")
         );
     }
 

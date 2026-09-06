@@ -1,5 +1,5 @@
-// Hide console window in release builds (Windows GUI app).
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Always hide console window (Windows GUI app).
+#![windows_subsystem = "windows"]
 
 use archi_backend_lib::commands::{self, StartupCliCreate, StartupCliPath};
 use archi_backend_lib::operations::OperationRegistry;
