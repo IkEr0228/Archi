@@ -589,18 +589,28 @@
       }
     });
 
-    // Check if launched with initial archive or create path via URL parameter (e.g. secondary window)
+    // Check if launched with initial archive, create path, or quick create via URL parameter (e.g. secondary window)
     const urlParams = new URLSearchParams(window.location.search);
+    const initialCreateAuto = urlParams.get('create_auto');
+    const initialFormat = (urlParams.get('format') || 'zip') as 'zip' | 'sevenZ';
     const initialCreate = urlParams.get('create');
     const initialArchive = urlParams.get('archive');
-    if (initialCreate) {
+
+    if (initialCreateAuto) {
+      void startQuickCreate(initialCreateAuto, initialFormat);
+    } else if (initialCreate) {
       openCreateModal([initialCreate]);
     } else if (initialArchive) {
       openArchiveAtPath(initialArchive);
     } else {
-      // First-instance startup path (if launched with archive or create arg).
+      // First-instance startup path (if launched with archive, create, or quick create arg).
       void (async () => {
         try {
+          const quick = await invoke<{ source: string; format: string } | null>('get_startup_cli_quick');
+          if (quick) {
+            void startQuickCreate(quick.source, (quick.format || 'zip') as 'zip' | 'sevenZ');
+            return;
+          }
           const createSources = await invoke<string[] | null>('get_startup_cli_create');
           if (createSources && createSources.length > 0) {
             openCreateModal(createSources);
@@ -1051,6 +1061,62 @@
         applyToAllChecked = false;
         activeOperation = null;
       }
+    }
+  }
+
+  async function startQuickCreate(sourcePath: string, format: 'zip' | 'sevenZ') {
+    if (activeOperation || !sourcePath) return;
+    try {
+      const destination = await invoke<string>('get_quick_archive_destination', {
+        sourcePath,
+        format
+      });
+      if (!destination) return;
+
+      const sources = [sourcePath];
+      const compression = format === 'sevenZ' ? 'max' : 'normal';
+      const options = {
+        format,
+        compression,
+        includeRoot: true,
+        overwrite: false,
+        password: null
+      };
+
+      let operationId: string | null = null;
+      try {
+        operationStatus = 'Creating archive...';
+        errorMessage = '';
+        operationId = crypto.randomUUID();
+        activeOperation = { id: operationId, kind: 'create' };
+        showProgressModal = true;
+        progressPercentage = 0;
+        progressPhase = '';
+        progressText = 'Starting archive creation...';
+
+        const summary = await invoke<OperationSummary>('create_archive_command', {
+          sourcePaths: sources,
+          outputZipPath: destination,
+          operationId,
+          options
+        });
+        if (summary.operation_id !== operationId || activeOperation?.id !== operationId) return;
+        operationStatus = `Created ${summary.extracted_files} entries at: ${summary.destination}`;
+        await openArchiveAtPath(summary.destination);
+      } catch (e: any) {
+        if (operationId && activeOperation?.id !== operationId) return;
+        errorMessage = `Archive creation failed: ${formatInvokeError(e)}`;
+        operationStatus = 'Error';
+      } finally {
+        if (operationId && activeOperation?.id === operationId) {
+          showProgressModal = false;
+          conflictPrompt = null;
+          applyToAllChecked = false;
+          activeOperation = null;
+        }
+      }
+    } catch (e: any) {
+      errorMessage = `Could not prepare archive destination: ${formatInvokeError(e)}`;
     }
   }
 

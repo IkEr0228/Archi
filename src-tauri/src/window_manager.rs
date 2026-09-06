@@ -94,6 +94,7 @@ pub enum WindowInitialTarget {
     None,
     Archive(String),
     Create(String),
+    QuickCreate { path: String, format: String },
 }
 
 /// Spawn a new window with cascading positioning and optional initial target.
@@ -124,6 +125,20 @@ pub fn create_new_window_with_target(
         }
         WindowInitialTarget::Create(ref path) => (
             WebviewUrl::App(format!("?create={}", url_encode(path)).into()),
+            "Создание архива — Archi".to_string(),
+        ),
+        WindowInitialTarget::QuickCreate {
+            ref path,
+            ref format,
+        } => (
+            WebviewUrl::App(
+                format!(
+                    "?create_auto={}&format={}",
+                    url_encode(path),
+                    url_encode(format)
+                )
+                .into(),
+            ),
             "Создание архива — Archi".to_string(),
         ),
         WindowInitialTarget::None => (WebviewUrl::default(), "Archi".to_string()),

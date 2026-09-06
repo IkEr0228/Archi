@@ -33,6 +33,15 @@ pub struct StartupCliPath(pub Mutex<Option<String>>);
 /// CLI create source paths resolved at process startup (first instance).
 pub struct StartupCliCreate(pub Mutex<Option<Vec<String>>>);
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QuickCreateStartup {
+    pub source: String,
+    pub format: String,
+}
+
+/// CLI quick create source and format resolved at process startup (first instance).
+pub struct StartupCliQuick(pub Mutex<Option<QuickCreateStartup>>);
+
 /// Production conflict resolver: apply-to-all policy, then UI via extract-conflict + wait.
 struct RegistryConflictResolver {
     registry: OperationRegistry,
@@ -92,6 +101,37 @@ pub fn get_startup_cli_path(state: State<'_, StartupCliPath>) -> Option<String> 
 #[command]
 pub fn get_startup_cli_create(state: State<'_, StartupCliCreate>) -> Option<Vec<String>> {
     state.0.lock().ok().and_then(|guard| guard.clone())
+}
+
+/// Quick create startup source and format from the first process argv, if any.
+#[command]
+pub fn get_startup_cli_quick(state: State<'_, StartupCliQuick>) -> Option<QuickCreateStartup> {
+    state.0.lock().ok().and_then(|mut guard| guard.take())
+}
+
+/// Calculate a collision-safe destination path for 1-click context menu creation.
+#[command]
+pub fn get_quick_archive_destination(
+    source_path: String,
+    format: String,
+) -> Result<String, CommandError> {
+    use crate::cli_handler::{clean_arg_path, source_stem, unique_archive_path};
+    let clean = clean_arg_path(&source_path, Path::new("."));
+    if !clean.exists() {
+        return Err(CommandError::new(
+            "not_found",
+            format!("Source path does not exist: {}", clean.display()),
+        ));
+    }
+    let parent = clean.parent().unwrap_or_else(|| Path::new("."));
+    let stem = source_stem(&clean);
+    let ext = match format.to_lowercase().as_str() {
+        "sevenz" | "7z" => "7z",
+        _ => "zip",
+    };
+    let base_output = parent.join(format!("{stem}.{ext}"));
+    let output_path = unique_archive_path(&base_output);
+    Ok(output_path.to_string_lossy().into_owned())
 }
 
 #[command]
