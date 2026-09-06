@@ -59,11 +59,16 @@ fn current_exe_path() -> Result<PathBuf, CommandError> {
 fn notify_shell() {
     #[link(name = "shell32")]
     extern "system" {
-        fn SHChangeNotify(event: i32, flags: u32, item1: isize, item2: isize);
+        fn SHChangeNotify(
+            event: i32,
+            flags: u32,
+            item1: *const std::ffi::c_void,
+            item2: *const std::ffi::c_void,
+        );
     }
     // SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0x0000
     unsafe {
-        SHChangeNotify(0x0800_0000, 0, 0, 0);
+        SHChangeNotify(0x0800_0000, 0, std::ptr::null(), std::ptr::null());
     }
 }
 

@@ -1,9 +1,11 @@
 pub mod archive;
 pub mod archive_edit;
 pub mod bzip2_format;
+pub mod cli_handler;
 pub mod cli_open;
 pub mod commands;
 pub mod conflict;
+pub mod context_menu;
 pub mod create_common;
 pub mod drag_out;
 pub mod extraction;

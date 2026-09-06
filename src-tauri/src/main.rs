@@ -1,7 +1,6 @@
 // Hide console window in release builds (Windows GUI app).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use archi_backend_lib::cli_open::resolve_cli_archive_path;
 use archi_backend_lib::commands::{self, StartupCliPath};
 use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
@@ -11,30 +10,109 @@ use tauri::Manager;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
-    tauri::Builder::default()
-        // Single-instance: spawn new window with the opened archive or focus active window.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            let path = resolve_cli_archive_path(&argv, std::path::Path::new(&cwd))
-                .map(|p| p.to_string_lossy().into_owned());
-            if let Some(archive_path) = path {
-                if let Err(error) =
-                    archi_backend_lib::window_manager::create_new_window(app, Some(archive_path))
-                {
-                    eprintln!("Failed to spawn new window: {error}");
+    let args: Vec<String> = std::env::args().collect();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let action = archi_backend_lib::cli_handler::parse_cli_action(&args, &cwd);
+
+    // Fast-path headless extraction when invoked from context menu or CLI:
+    match action {
+        archi_backend_lib::cli_handler::CliAction::ExtractHere(ref path) => {
+            match archi_backend_lib::cli_handler::execute_cli_extraction(
+                path,
+                archi_backend_lib::cli_handler::CliExtractTarget::Here,
+            ) {
+                Ok(_) => return,
+                Err(err) if err.code == "password_required" => {
+                    // Password protected: fall through to GUI window for interactive password entry.
                 }
-            } else {
-                let windows = app.webview_windows();
-                if let Some(window) = windows
-                    .values()
-                    .find(|w| w.is_focused().unwrap_or(false))
-                    .or_else(|| windows.values().next())
-                {
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                } else if let Err(error) =
-                    archi_backend_lib::window_manager::create_new_window(app, None)
-                {
-                    eprintln!("Failed to spawn blank window: {error}");
+                Err(err) => {
+                    archi_backend_lib::cli_handler::show_native_error_box("Archi", &err.message);
+                    return;
+                }
+            }
+        }
+        archi_backend_lib::cli_handler::CliAction::ExtractTo(ref path) => {
+            match archi_backend_lib::cli_handler::execute_cli_extraction(
+                path,
+                archi_backend_lib::cli_handler::CliExtractTarget::ToSubfolder,
+            ) {
+                Ok(_) => return,
+                Err(err) if err.code == "password_required" => {
+                    // Password protected: fall through to GUI window for interactive password entry.
+                }
+                Err(err) => {
+                    archi_backend_lib::cli_handler::show_native_error_box("Archi", &err.message);
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    tauri::Builder::default()
+        // Single-instance: handle secondary CLI invocations (open window, extract, or focus).
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let act =
+                archi_backend_lib::cli_handler::parse_cli_action(&argv, std::path::Path::new(&cwd));
+            match act {
+                archi_backend_lib::cli_handler::CliAction::ExtractHere(ref path) => {
+                    if let Err(err) = archi_backend_lib::cli_handler::execute_cli_extraction(
+                        path,
+                        archi_backend_lib::cli_handler::CliExtractTarget::Here,
+                    ) {
+                        if err.code == "password_required" {
+                            let _ = archi_backend_lib::window_manager::create_new_window(
+                                app,
+                                Some(path.to_string_lossy().into_owned()),
+                            );
+                        } else {
+                            archi_backend_lib::cli_handler::show_native_error_box(
+                                "Archi",
+                                &err.message,
+                            );
+                        }
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::ExtractTo(ref path) => {
+                    if let Err(err) = archi_backend_lib::cli_handler::execute_cli_extraction(
+                        path,
+                        archi_backend_lib::cli_handler::CliExtractTarget::ToSubfolder,
+                    ) {
+                        if err.code == "password_required" {
+                            let _ = archi_backend_lib::window_manager::create_new_window(
+                                app,
+                                Some(path.to_string_lossy().into_owned()),
+                            );
+                        } else {
+                            archi_backend_lib::cli_handler::show_native_error_box(
+                                "Archi",
+                                &err.message,
+                            );
+                        }
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::Open(archive_path) => {
+                    if let Err(error) = archi_backend_lib::window_manager::create_new_window(
+                        app,
+                        Some(archive_path.to_string_lossy().into_owned()),
+                    ) {
+                        eprintln!("Failed to spawn new window: {error}");
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::Blank => {
+                    let windows = app.webview_windows();
+                    if let Some(window) = windows
+                        .values()
+                        .find(|w| w.is_focused().unwrap_or(false))
+                        .or_else(|| windows.values().next())
+                    {
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    } else if let Err(error) =
+                        archi_backend_lib::window_manager::create_new_window(app, None)
+                    {
+                        eprintln!("Failed to spawn blank window: {error}");
+                    }
                 }
             }
         }))
@@ -42,13 +120,19 @@ fn main() {
         .plugin(tauri_plugin_drag::init())
         .manage(OperationRegistry::default())
         .manage(StartupCliPath(Mutex::new(None)))
-        .setup(|app| {
-            let args: Vec<String> = std::env::args().collect();
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let path =
-                resolve_cli_archive_path(&args, &cwd).map(|p| p.to_string_lossy().into_owned());
+        .setup(move |app| {
+            let startup_path = match action {
+                archi_backend_lib::cli_handler::CliAction::Open(ref p) => {
+                    Some(p.to_string_lossy().into_owned())
+                }
+                archi_backend_lib::cli_handler::CliAction::ExtractHere(ref p)
+                | archi_backend_lib::cli_handler::CliAction::ExtractTo(ref p) => {
+                    Some(p.to_string_lossy().into_owned())
+                }
+                _ => None,
+            };
             if let Ok(mut guard) = app.state::<StartupCliPath>().0.lock() {
-                *guard = path;
+                *guard = startup_path;
             }
 
             archi_backend_lib::drag_out::cleanup_old_drag_temp_dirs();
