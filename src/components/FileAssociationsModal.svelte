@@ -1,5 +1,5 @@
 <script lang="ts">
-  type Status = {
+  type AssocStatus = {
     supported: boolean;
     enabled: boolean;
     associatedExtensions: string[];
@@ -7,18 +7,31 @@
     message: string;
   };
 
+  type ContextMenuStatus = {
+    supported: boolean;
+    archiveMenuEnabled: boolean;
+    filesMenuEnabled: boolean;
+    message: string;
+  };
+
   let {
     status,
+    contextMenuStatus = null,
     busy = false,
     onEnable,
     onDisable,
+    onEnableContextMenu,
+    onDisableContextMenu,
     onRefresh,
     onClose,
   } = $props<{
-    status: Status | null;
+    status: AssocStatus | null;
+    contextMenuStatus?: ContextMenuStatus | null;
     busy?: boolean;
     onEnable: () => void;
     onDisable: () => void;
+    onEnableContextMenu?: () => void;
+    onDisableContextMenu?: () => void;
     onRefresh: () => void;
     onClose: () => void;
   }>();
@@ -28,21 +41,28 @@
       ? status.associatedExtensions.map((e: string) => `.${e}`).join(", ")
       : "—"
   );
+
+  const isMenuFullyEnabled = $derived(
+    Boolean(contextMenuStatus?.archiveMenuEnabled && contextMenuStatus?.filesMenuEnabled)
+  );
+
+  const isMenuPartiallyEnabled = $derived(
+    Boolean(contextMenuStatus?.archiveMenuEnabled || contextMenuStatus?.filesMenuEnabled)
+  );
 </script>
 
 <div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="assoc-dialog-title">
   <div class="modal-content create-dialog">
-    <div id="assoc-dialog-title" class="modal-header monospace">FILE ASSOCIATIONS</div>
+    <div id="assoc-dialog-title" class="modal-header monospace">INTEGRATION & ASSOCIATIONS</div>
     <div class="modal-body monospace create-body">
       <p class="create-hint">
-        Opt-in only. Registers Archi for archive types under your Windows user account (HKCU).
-        Does not change machine-wide defaults. Reversible anytime.
+        Opt-in only. Configures file associations and Explorer context menu under your Windows user account (HKCU).
+        Does not require admin privileges. 100% reversible anytime.
       </p>
+
+      <!-- Section 1: Default File Opener -->
+      <div class="section-title">FILE ASSOCIATIONS</div>
       {#if status}
-        <div class="create-field">
-          <span class="create-label">Platform</span>
-          <span class="create-value">{status.supported ? "Windows" : "Unsupported"}</span>
-        </div>
         <div class="create-field">
           <span class="create-label">Status</span>
           <span class="create-value">{status.enabled ? "Enabled" : "Disabled"}</span>
@@ -51,42 +71,109 @@
           <span class="create-label">Extensions</span>
           <span class="create-value" title={extList}>{extList}</span>
         </div>
-        {#if status.exePath}
-          <div class="create-field">
-            <span class="create-label">App path</span>
-            <span class="create-value create-path" title={status.exePath}>{status.exePath}</span>
-          </div>
-        {/if}
-        <p class="create-hint">{status.message}</p>
+        <div class="section-actions">
+          <button
+            type="button"
+            class="action-btn"
+            onclick={onDisable}
+            disabled={busy || !status.supported || (!status.enabled && !status.associatedExtensions?.length)}
+          >
+            Disable Associations
+          </button>
+          <button
+            type="button"
+            class="action-btn create-primary"
+            onclick={onEnable}
+            disabled={busy || !status.supported}
+          >
+            {status.enabled ? "Update Associations" : "Enable Associations"}
+          </button>
+        </div>
       {:else}
         <p class="create-hint">Loading association status…</p>
       {/if}
+
+      <hr class="section-divider" />
+
+      <!-- Section 2: Explorer Right-Click Context Menu -->
+      <div class="section-title">EXPLORER CONTEXT MENU (ПКМ)</div>
+      {#if contextMenuStatus}
+        <div class="create-field">
+          <span class="create-label">Status</span>
+          <span class="create-value">
+            {#if isMenuFullyEnabled}
+              Enabled (Archives & Files)
+            {:else if isMenuPartiallyEnabled}
+              Partially Enabled
+            {:else}
+              Disabled
+            {/if}
+          </span>
+        </div>
+        <div class="create-field">
+          <span class="create-label">Menu Verbs</span>
+          <span class="create-value" style="font-size: 0.75rem; line-height: 1.3;">
+            • Archives: Open with Archi, Extract here, Extract to folder<br />
+            • Files & Folders: Add to archive..., Quick .zip, Quick .7z
+          </span>
+        </div>
+        <div class="section-actions">
+          <button
+            type="button"
+            class="action-btn"
+            onclick={onDisableContextMenu}
+            disabled={busy || !contextMenuStatus.supported || !isMenuPartiallyEnabled}
+          >
+            Disable Context Menu
+          </button>
+          <button
+            type="button"
+            class="action-btn create-primary"
+            onclick={onEnableContextMenu}
+            disabled={busy || !contextMenuStatus.supported}
+          >
+            {isMenuFullyEnabled ? "Update Context Menu" : "Enable Context Menu"}
+          </button>
+        </div>
+      {:else}
+        <p class="create-hint">Loading context menu status…</p>
+      {/if}
     </div>
+
     <div class="modal-footer assoc-footer">
-      <button type="button" onclick={onRefresh} disabled={busy}>Refresh</button>
-      <button type="button" onclick={onClose} disabled={busy}>Close</button>
-      <button
-        type="button"
-        class="create-primary"
-        onclick={onDisable}
-        disabled={busy || !status?.supported || (!status?.enabled && !(status?.associatedExtensions?.length))}
-      >
-        Disable
-      </button>
-      <button
-        type="button"
-        class="create-primary"
-        onclick={onEnable}
-        disabled={busy || !status?.supported}
-      >
-        {status?.enabled ? "Repair / Update" : "Enable"}
-      </button>
+      <button type="button" onclick={onRefresh} disabled={busy}>Refresh Status</button>
+      <button type="button" class="create-primary" onclick={onClose} disabled={busy}>Close</button>
     </div>
   </div>
 </div>
 
 <style>
+  .section-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--pastel-mint);
+    letter-spacing: 0.05em;
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .section-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 0.8rem 0;
+  }
+  .section-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-top: 0.4rem;
+  }
+  .action-btn {
+    font-size: 0.78rem;
+    padding: 0.35rem 0.75rem;
+  }
   .assoc-footer {
+    display: flex;
+    justify-content: flex-end;
     flex-wrap: wrap;
     gap: 0.5rem;
   }

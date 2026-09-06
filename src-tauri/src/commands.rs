@@ -930,3 +930,20 @@ pub async fn set_window_title_command(
         .set_title(&title)
         .map_err(|e| CommandError::new("set_title_failed", e.to_string()))
 }
+
+#[command]
+pub fn get_context_menu_status_command() -> crate::context_menu::ContextMenuStatus {
+    crate::context_menu::get_context_menu_status()
+}
+
+#[command]
+pub fn register_context_menu_command(
+) -> Result<crate::context_menu::ContextMenuStatus, CommandError> {
+    crate::context_menu::register_all_context_menus()
+}
+
+#[command]
+pub fn unregister_context_menu_command(
+) -> Result<crate::context_menu::ContextMenuStatus, CommandError> {
+    crate::context_menu::unregister_all_context_menus()
+}

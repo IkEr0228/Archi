@@ -235,6 +235,13 @@
     message: string;
   } | null>(null);
 
+  let contextMenuStatus = $state<{
+    supported: boolean;
+    archiveMenuEnabled: boolean;
+    filesMenuEnabled: boolean;
+    message: string;
+  } | null>(null);
+
   // Create archive modal state
   let showCreateModal = $state(false);
   let createSources = $state<string[]>([]);
@@ -1055,10 +1062,18 @@
     }
   }
 
+  async function refreshContextMenuStatus() {
+    try {
+      contextMenuStatus = await invoke('get_context_menu_status_command');
+    } catch (e: any) {
+      errorMessage = `Could not read context menu status: ${formatInvokeError(e)}`;
+    }
+  }
+
   async function openAssociationsModal() {
     showAssocModal = true;
     errorMessage = '';
-    await refreshAssociationStatus();
+    await Promise.all([refreshAssociationStatus(), refreshContextMenuStatus()]);
   }
 
   async function enableAssociations() {
@@ -1084,6 +1099,32 @@
       operationStatus = 'File associations cleared for this user.';
     } catch (e: any) {
       errorMessage = `Could not disable associations: ${formatInvokeError(e)}`;
+    } finally {
+      assocBusy = false;
+    }
+  }
+
+  async function enableContextMenu() {
+    if (assocBusy) return;
+    assocBusy = true;
+    try {
+      contextMenuStatus = await invoke('register_context_menu_command');
+      operationStatus = 'Windows context menu registered for this user.';
+    } catch (e: any) {
+      errorMessage = `Could not register context menu: ${formatInvokeError(e)}`;
+    } finally {
+      assocBusy = false;
+    }
+  }
+
+  async function disableContextMenu() {
+    if (assocBusy) return;
+    assocBusy = true;
+    try {
+      contextMenuStatus = await invoke('unregister_context_menu_command');
+      operationStatus = 'Windows context menu removed for this user.';
+    } catch (e: any) {
+      errorMessage = `Could not remove context menu: ${formatInvokeError(e)}`;
     } finally {
       assocBusy = false;
     }
@@ -1592,10 +1633,15 @@
 {#if showAssocModal}
   <FileAssociationsModal
     status={assocStatus}
+    contextMenuStatus={contextMenuStatus}
     busy={assocBusy}
     onEnable={enableAssociations}
     onDisable={disableAssociations}
-    onRefresh={refreshAssociationStatus}
+    onEnableContextMenu={enableContextMenu}
+    onDisableContextMenu={disableContextMenu}
+    onRefresh={async () => {
+      await Promise.all([refreshAssociationStatus(), refreshContextMenuStatus()]);
+    }}
     onClose={() => (showAssocModal = false)}
   />
 {/if}
