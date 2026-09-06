@@ -179,6 +179,7 @@ cargo test --manifest-path src-tauri/Cargo.toml            # Backend test suite 
 - **[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md):** Architecture, coding standards, and security conventions.
 - **[`SECURITY.md`](SECURITY.md):** Security policies and vulnerability reporting.
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md):** Guidelines for contributing to Archi.
+- **[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md):** Contributor Covenant Code of Conduct.
 
 ---
 

@@ -41,6 +41,7 @@
 | `docs/DEVELOPMENT.md` | Coding and security conventions |
 | `README.md` | User-facing overview and capability matrix |
 | `CONTRIBUTING.md` | How to contribute |
+| `CODE_OF_CONDUCT.md` | Community code of conduct |
 | `SECURITY.md` | Vulnerability reporting |
 
 ## Build
