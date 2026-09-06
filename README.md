@@ -40,7 +40,7 @@ Get the latest version of Archi for **Windows 10 / 11 (64-bit)**:
 
 ## 📸 Preview
 
-| Main Window (Dark Acrylic) | Create Archive (AES-256) | Password Prompt |
+| Main Window | Password Prompt | Archive viewing |
 | :---: | :---: | :---: |
 | ![Main Window](screens/1.png) | ![Create Archive](screens/2.png) | ![Password Prompt](screens/3.png) |
 
