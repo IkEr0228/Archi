@@ -127,6 +127,16 @@ impl CreateOptions {
             password: None,
         }
     }
+
+    pub fn default_7z() -> Self {
+        Self {
+            format: CreateFormat::SevenZ,
+            compression: CompressionPreset::Normal,
+            include_root: true,
+            overwrite: false,
+            password: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

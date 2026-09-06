@@ -57,6 +57,20 @@ impl ConflictResolver for FailOnConflict {
     }
 }
 
+/// Headless/CLI conflict resolver that overwrites existing files.
+pub struct AutoOverwriteConflictResolver;
+
+impl ConflictResolver for AutoOverwriteConflictResolver {
+    fn resolve_file_exists(
+        &self,
+        _operation_id: &str,
+        _entry_path: &str,
+        _dest_path: &Path,
+    ) -> Result<ConflictDecision, CommandError> {
+        Ok(ConflictDecision::Overwrite)
+    }
+}
+
 /// Test helper that returns scripted decisions in order for each file conflict.
 pub struct ScriptedConflictResolver {
     pub decisions: Mutex<VecDeque<ConflictDecision>>,

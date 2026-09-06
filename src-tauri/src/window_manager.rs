@@ -67,7 +67,7 @@ pub fn capture_and_save_window_state(window: &WebviewWindow) {
 pub fn attach_window_state_saver(window: &WebviewWindow) {
     let w = window.clone();
     window.on_window_event(move |event| {
-        if let WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed = event {
+        if let WindowEvent::CloseRequested { .. } = event {
             capture_and_save_window_state(&w);
         }
     });
@@ -89,10 +89,19 @@ pub fn url_encode(input: &str) -> String {
     encoded
 }
 
-/// Spawn a new window with cascading positioning and optional initial archive path.
-pub fn create_new_window(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowInitialTarget {
+    None,
+    Archive(String),
+    Create(String),
+    QuickCreate { path: String, format: String },
+    CreateBatch(String),
+}
+
+/// Spawn a new window with cascading positioning and optional initial target.
+pub fn create_new_window_with_target(
     app: &AppHandle,
-    archive_path: Option<String>,
+    target: WindowInitialTarget,
 ) -> Result<WebviewWindow, String> {
     let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
     let label = format!(
@@ -104,20 +113,40 @@ pub fn create_new_window(
         id
     );
 
-    let webview_url = if let Some(ref path) = archive_path {
-        WebviewUrl::App(format!("?archive={}", url_encode(path)).into())
-    } else {
-        WebviewUrl::default()
-    };
-
-    let title = if let Some(ref p) = archive_path {
-        let name = Path::new(p)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Archi");
-        format!("{name} — Archi")
-    } else {
-        "Archi".to_string()
+    let (webview_url, title) = match target {
+        WindowInitialTarget::Archive(ref path) => {
+            let name = Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Archi");
+            (
+                WebviewUrl::App(format!("?archive={}", url_encode(path)).into()),
+                format!("{name} — Archi"),
+            )
+        }
+        WindowInitialTarget::Create(ref path) => (
+            WebviewUrl::App(format!("?create={}", url_encode(path)).into()),
+            "Создание архива — Archi".to_string(),
+        ),
+        WindowInitialTarget::QuickCreate {
+            ref path,
+            ref format,
+        } => (
+            WebviewUrl::App(
+                format!(
+                    "?create_auto={}&format={}",
+                    url_encode(path),
+                    url_encode(format)
+                )
+                .into(),
+            ),
+            "Создание архива — Archi".to_string(),
+        ),
+        WindowInitialTarget::CreateBatch(ref batch_id) => (
+            WebviewUrl::App(format!("?create_batch={}", url_encode(batch_id)).into()),
+            "Создание архива — Archi".to_string(),
+        ),
+        WindowInitialTarget::None => (WebviewUrl::default(), "Archi".to_string()),
     };
 
     // Calculate cascading position and size based on active windows or saved state:
@@ -127,7 +156,7 @@ pub fn create_new_window(
         .find(|w| w.is_focused().unwrap_or(false))
         .or_else(|| windows.values().next());
 
-    let (pos, size) = if let Some(ref w) = reference_window {
+    let (pos, size) = if let Some(w) = reference_window {
         let cur_pos = w
             .outer_position()
             .unwrap_or(PhysicalPosition::new(100, 100));
@@ -188,6 +217,18 @@ pub fn create_new_window(
     let _ = window.set_focus();
 
     Ok(window)
+}
+
+/// Spawn a new window with optional initial archive path.
+pub fn create_new_window(
+    app: &AppHandle,
+    archive_path: Option<String>,
+) -> Result<WebviewWindow, String> {
+    let target = match archive_path {
+        Some(path) => WindowInitialTarget::Archive(path),
+        None => WindowInitialTarget::None,
+    };
+    create_new_window_with_target(app, target)
 }
 
 #[cfg(test)]

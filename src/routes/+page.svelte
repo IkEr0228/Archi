@@ -26,6 +26,7 @@
   import { buildArchiveIndexes } from '../lib/archiveIndex.js';
   import { formatInvokeError } from '../lib/invokeError.js';
   import {
+    defaultExtensionForCreateFormat,
     ensureCreateExtension,
     isArchivePath,
     withCreateExtension,
@@ -232,6 +233,13 @@
     enabled: boolean;
     associatedExtensions: string[];
     exePath: string | null;
+    message: string;
+  } | null>(null);
+
+  let contextMenuStatus = $state<{
+    supported: boolean;
+    archiveMenuEnabled: boolean;
+    filesMenuEnabled: boolean;
     message: string;
   } | null>(null);
 
@@ -582,15 +590,48 @@
       }
     });
 
-    // Check if launched with initial archive path via URL parameter (e.g. secondary window)
+    // Check if launched with initial archive, create path, or quick create via URL parameter (e.g. secondary window)
     const urlParams = new URLSearchParams(window.location.search);
+    const initialCreateBatch = urlParams.get('create_batch');
+    const initialCreateAuto = urlParams.get('create_auto');
+    const initialFormat = (urlParams.get('format') || 'zip') as 'zip' | 'sevenZ';
+    const initialCreate = urlParams.get('create');
     const initialArchive = urlParams.get('archive');
-    if (initialArchive) {
-      openArchiveAtPath(initialArchive);
-    } else {
-      // First-instance startup path (if launched with archive arg).
+
+    const unlistenBatch = listen<{ sources: string[]; format: string }>('open-create-batch', (event) => {
+      if (event.payload?.sources?.length) {
+        void openCreateModal(event.payload.sources, (event.payload.format || 'zip') as any);
+      }
+    });
+
+    if (initialCreateBatch) {
       void (async () => {
         try {
+          const batch = await invoke<{ sources: string[]; format: string } | null>('get_create_batch', {
+            id: initialCreateBatch
+          });
+          if (batch && batch.sources.length > 0) {
+            void openCreateModal(batch.sources, (batch.format || 'zip') as any);
+          }
+        } catch (e: unknown) {
+          errorMessage = `Failed to read create batch: ${formatInvokeError(e)}`;
+        }
+      })();
+    } else if (initialCreateAuto) {
+      void openCreateModal([initialCreateAuto], initialFormat);
+    } else if (initialCreate) {
+      void openCreateModal([initialCreate], 'zip');
+    } else if (initialArchive) {
+      openArchiveAtPath(initialArchive);
+    } else {
+      // First-instance startup path (if launched with archive, create, or quick create arg).
+      void (async () => {
+        try {
+          const batch = await invoke<{ sources: string[]; format: string } | null>('get_startup_create_batch');
+          if (batch && batch.sources.length > 0) {
+            void openCreateModal(batch.sources, (batch.format || 'zip') as any);
+            return;
+          }
           const path = await invoke<string | null>('get_startup_cli_path');
           if (path) {
             openArchiveAtPath(path);
@@ -643,6 +684,7 @@
       unlistenEditProgress.then((fn) => fn());
       unlistenExtractConflict.then((fn) => fn());
       unlistenCliOpen.then((fn) => fn());
+      unlistenBatch.then((fn) => fn());
       window.removeEventListener('keydown', onKeyDown);
     };
   });
@@ -935,21 +977,43 @@
     }
   }
 
-  function resetCreateOptions() {
-    createFormat = 'zip';
-    createCompression = 'normal';
-    createIncludeRoot = true;
-    createOverwrite = false;
-    createOutputPath = '';
-    createPassword = '';
-  }
-
-  function openCreateModal(sources: string[]) {
+  async function openCreateModal(
+    sources: string[],
+    initialFormat: 'zip' | 'tar' | 'tarGz' | 'tarBz2' | 'tarXz' | 'sevenZ' = 'zip'
+  ) {
     if (activeOperation || !sources.length) return;
     createSources = sources;
-    resetCreateOptions();
-    showCreateModal = true;
+    createFormat = initialFormat;
+    if (initialFormat === 'sevenZ') {
+      createCompression = 'max';
+    } else if (initialFormat === 'tar') {
+      createCompression = 'store';
+    } else {
+      createCompression = 'normal';
+    }
+    createIncludeRoot = true;
+    createOverwrite = false;
+    createPassword = '';
     errorMessage = '';
+
+    // Synchronously pre-fill output path so dialog opens with path already filled:
+    const first = sources[0].replace(/[\\/]+$/, '');
+    const ext = defaultExtensionForCreateFormat(initialFormat);
+    createOutputPath = `${first}.${ext}`;
+    showCreateModal = true;
+
+    // Refine output path with collision-safe naming from backend:
+    try {
+      const suggested = await invoke<string>('get_quick_archive_destination', {
+        sourcePath: sources[0],
+        format: initialFormat
+      });
+      if (suggested) {
+        createOutputPath = suggested;
+      }
+    } catch {
+      // Synchronous fallback already populated
+    }
   }
 
   function handleCreateFormatChange(format: 'zip' | 'tar' | 'tarGz' | 'tarBz2' | 'tarXz' | 'sevenZ') {
@@ -970,7 +1034,7 @@
     try {
       const sources = await invoke<string[] | null>('select_multiple_files');
       if (!sources || sources.length === 0) return;
-      openCreateModal(sources);
+      void openCreateModal(sources);
     } catch (e: any) {
       errorMessage = `Could not select sources: ${formatInvokeError(e)}`;
     }
@@ -1047,10 +1111,18 @@
     }
   }
 
+  async function refreshContextMenuStatus() {
+    try {
+      contextMenuStatus = await invoke('get_context_menu_status_command');
+    } catch (e: any) {
+      errorMessage = `Could not read context menu status: ${formatInvokeError(e)}`;
+    }
+  }
+
   async function openAssociationsModal() {
     showAssocModal = true;
     errorMessage = '';
-    await refreshAssociationStatus();
+    await Promise.all([refreshAssociationStatus(), refreshContextMenuStatus()]);
   }
 
   async function enableAssociations() {
@@ -1076,6 +1148,32 @@
       operationStatus = 'File associations cleared for this user.';
     } catch (e: any) {
       errorMessage = `Could not disable associations: ${formatInvokeError(e)}`;
+    } finally {
+      assocBusy = false;
+    }
+  }
+
+  async function enableContextMenu() {
+    if (assocBusy) return;
+    assocBusy = true;
+    try {
+      contextMenuStatus = await invoke('register_context_menu_command');
+      operationStatus = 'Windows context menu registered for this user.';
+    } catch (e: any) {
+      errorMessage = `Could not register context menu: ${formatInvokeError(e)}`;
+    } finally {
+      assocBusy = false;
+    }
+  }
+
+  async function disableContextMenu() {
+    if (assocBusy) return;
+    assocBusy = true;
+    try {
+      contextMenuStatus = await invoke('unregister_context_menu_command');
+      operationStatus = 'Windows context menu removed for this user.';
+    } catch (e: any) {
+      errorMessage = `Could not remove context menu: ${formatInvokeError(e)}`;
     } finally {
       assocBusy = false;
     }
@@ -1246,7 +1344,7 @@
       openArchiveAtPath(paths[0]);
       return;
     }
-    openCreateModal(paths);
+    void openCreateModal(paths);
   }
 
   async function handleAddToArchive() {
@@ -1584,10 +1682,15 @@
 {#if showAssocModal}
   <FileAssociationsModal
     status={assocStatus}
+    contextMenuStatus={contextMenuStatus}
     busy={assocBusy}
     onEnable={enableAssociations}
     onDisable={disableAssociations}
-    onRefresh={refreshAssociationStatus}
+    onEnableContextMenu={enableContextMenu}
+    onDisableContextMenu={disableContextMenu}
+    onRefresh={async () => {
+      await Promise.all([refreshAssociationStatus(), refreshContextMenuStatus()]);
+    }}
     onClose={() => (showAssocModal = false)}
   />
 {/if}
@@ -1600,7 +1703,7 @@
     compression={createCompression}
     includeRoot={createIncludeRoot}
     overwrite={createOverwrite}
-    outputPath={createOutputPath}
+    bind:outputPath={createOutputPath}
     bind:password={createPassword}
     busy={!!activeOperation}
     onFormat={handleCreateFormatChange}

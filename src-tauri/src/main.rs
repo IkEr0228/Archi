@@ -1,8 +1,7 @@
-// Hide console window in release builds (Windows GUI app).
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Always hide console window (Windows GUI app).
+#![windows_subsystem = "windows"]
 
-use archi_backend_lib::cli_open::resolve_cli_archive_path;
-use archi_backend_lib::commands::{self, StartupCliPath};
+use archi_backend_lib::commands::{self, StartupCliCreate, StartupCliPath, StartupCliQuick};
 use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -11,30 +10,138 @@ use tauri::Manager;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
-    tauri::Builder::default()
-        // Single-instance: spawn new window with the opened archive or focus active window.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            let path = resolve_cli_archive_path(&argv, std::path::Path::new(&cwd))
-                .map(|p| p.to_string_lossy().into_owned());
-            if let Some(archive_path) = path {
-                if let Err(error) =
-                    archi_backend_lib::window_manager::create_new_window(app, Some(archive_path))
-                {
-                    eprintln!("Failed to spawn new window: {error}");
+    let args: Vec<String> = std::env::args().collect();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let action = archi_backend_lib::cli_handler::parse_cli_action(&args, &cwd);
+
+    // Fast-path headless extraction when invoked from context menu or CLI:
+    match action {
+        archi_backend_lib::cli_handler::CliAction::ExtractHere(ref path) => {
+            match archi_backend_lib::cli_handler::execute_cli_extraction(
+                path,
+                archi_backend_lib::cli_handler::CliExtractTarget::Here,
+            ) {
+                Ok(_) => return,
+                Err(err) if err.code == "password_required" => {
+                    // Password protected: fall through to GUI window for interactive password entry.
                 }
-            } else {
-                let windows = app.webview_windows();
-                if let Some(window) = windows
-                    .values()
-                    .find(|w| w.is_focused().unwrap_or(false))
-                    .or_else(|| windows.values().next())
-                {
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                } else if let Err(error) =
-                    archi_backend_lib::window_manager::create_new_window(app, None)
-                {
-                    eprintln!("Failed to spawn blank window: {error}");
+                Err(err) => {
+                    archi_backend_lib::cli_handler::show_native_error_box("Archi", &err.message);
+                    return;
+                }
+            }
+        }
+        archi_backend_lib::cli_handler::CliAction::ExtractTo(ref path) => {
+            match archi_backend_lib::cli_handler::execute_cli_extraction(
+                path,
+                archi_backend_lib::cli_handler::CliExtractTarget::ToSubfolder,
+            ) {
+                Ok(_) => return,
+                Err(err) if err.code == "password_required" => {
+                    // Password protected: fall through to GUI window for interactive password entry.
+                }
+                Err(err) => {
+                    archi_backend_lib::cli_handler::show_native_error_box("Archi", &err.message);
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    tauri::Builder::default()
+        // Single-instance: handle secondary CLI invocations (open window, extract, or focus).
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            let act =
+                archi_backend_lib::cli_handler::parse_cli_action(&argv, std::path::Path::new(&cwd));
+            match act {
+                archi_backend_lib::cli_handler::CliAction::ExtractHere(ref path) => {
+                    if let Err(err) = archi_backend_lib::cli_handler::execute_cli_extraction(
+                        path,
+                        archi_backend_lib::cli_handler::CliExtractTarget::Here,
+                    ) {
+                        if err.code == "password_required" {
+                            let _ = archi_backend_lib::window_manager::create_new_window(
+                                app,
+                                Some(path.to_string_lossy().into_owned()),
+                            );
+                        } else {
+                            archi_backend_lib::cli_handler::show_native_error_box(
+                                "Archi",
+                                &err.message,
+                            );
+                        }
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::ExtractTo(ref path) => {
+                    if let Err(err) = archi_backend_lib::cli_handler::execute_cli_extraction(
+                        path,
+                        archi_backend_lib::cli_handler::CliExtractTarget::ToSubfolder,
+                    ) {
+                        if err.code == "password_required" {
+                            let _ = archi_backend_lib::window_manager::create_new_window(
+                                app,
+                                Some(path.to_string_lossy().into_owned()),
+                            );
+                        } else {
+                            archi_backend_lib::cli_handler::show_native_error_box(
+                                "Archi",
+                                &err.message,
+                            );
+                        }
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::AddZip(ref path) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.clone(),
+                        vec![path.to_string_lossy().into_owned()],
+                        "zip".to_string(),
+                        false,
+                    );
+                }
+                archi_backend_lib::cli_handler::CliAction::Add7z(ref path) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.clone(),
+                        vec![path.to_string_lossy().into_owned()],
+                        "sevenZ".to_string(),
+                        false,
+                    );
+                }
+                archi_backend_lib::cli_handler::CliAction::Create(ref paths) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    let list: Vec<String> = paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    batcher.add_items(app.clone(), list, "zip".to_string(), false);
+                }
+                archi_backend_lib::cli_handler::CliAction::Open(archive_path) => {
+                    if let Err(error) = archi_backend_lib::window_manager::create_new_window(
+                        app,
+                        Some(archive_path.to_string_lossy().into_owned()),
+                    ) {
+                        eprintln!("Failed to spawn new window: {error}");
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::Blank => {
+                    let windows = app.webview_windows();
+                    if let Some(window) = windows
+                        .values()
+                        .find(|w| w.is_focused().unwrap_or(false))
+                        .or_else(|| windows.values().next())
+                    {
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    } else if let Err(error) =
+                        archi_backend_lib::window_manager::create_new_window(app, None)
+                    {
+                        eprintln!("Failed to spawn blank window: {error}");
+                    }
                 }
             }
         }))
@@ -42,13 +149,54 @@ fn main() {
         .plugin(tauri_plugin_drag::init())
         .manage(OperationRegistry::default())
         .manage(StartupCliPath(Mutex::new(None)))
-        .setup(|app| {
-            let args: Vec<String> = std::env::args().collect();
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            let path =
-                resolve_cli_archive_path(&args, &cwd).map(|p| p.to_string_lossy().into_owned());
+        .manage(StartupCliCreate(Mutex::new(None)))
+        .manage(StartupCliQuick(Mutex::new(None)))
+        .manage(archi_backend_lib::batch_create::ContextMenuBatcher::default())
+        .setup(move |app| {
+            let startup_path = match action {
+                archi_backend_lib::cli_handler::CliAction::Open(ref p) => {
+                    Some(p.to_string_lossy().into_owned())
+                }
+                archi_backend_lib::cli_handler::CliAction::ExtractHere(ref p)
+                | archi_backend_lib::cli_handler::CliAction::ExtractTo(ref p) => {
+                    Some(p.to_string_lossy().into_owned())
+                }
+                archi_backend_lib::cli_handler::CliAction::Create(ref paths) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    let list: Vec<String> = paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    batcher.add_items(app.handle().clone(), list, "zip".to_string(), true);
+                    None
+                }
+                archi_backend_lib::cli_handler::CliAction::AddZip(ref p) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.handle().clone(),
+                        vec![p.to_string_lossy().into_owned()],
+                        "zip".to_string(),
+                        true,
+                    );
+                    None
+                }
+                archi_backend_lib::cli_handler::CliAction::Add7z(ref p) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.handle().clone(),
+                        vec![p.to_string_lossy().into_owned()],
+                        "sevenZ".to_string(),
+                        true,
+                    );
+                    None
+                }
+                _ => None,
+            };
             if let Ok(mut guard) = app.state::<StartupCliPath>().0.lock() {
-                *guard = path;
+                *guard = startup_path;
             }
 
             archi_backend_lib::drag_out::cleanup_old_drag_temp_dirs();
@@ -76,6 +224,11 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_app_name,
             commands::get_startup_cli_path,
+            commands::get_startup_cli_create,
+            commands::get_startup_cli_quick,
+            commands::get_startup_create_batch,
+            commands::get_create_batch,
+            commands::get_quick_archive_destination,
             commands::open_archive_metadata,
             commands::test_archive_command,
             commands::extract_archive_command,
@@ -102,6 +255,9 @@ fn main() {
             commands::cancel_drag_out,
             commands::create_new_window_command,
             commands::set_window_title_command,
+            commands::get_context_menu_status_command,
+            commands::register_context_menu_command,
+            commands::unregister_context_menu_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

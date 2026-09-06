@@ -56,14 +56,51 @@ fn current_exe_path() -> Result<PathBuf, CommandError> {
 }
 
 #[cfg(windows)]
+pub fn resolve_icon_spec(exe: &std::path::Path) -> String {
+    if let Some(parent) = exe.parent() {
+        // 1. Check directly adjacent icon.ico (installed app or debug output)
+        let adjacent = parent.join("icon.ico");
+        if adjacent.is_file() {
+            return adjacent.to_string_lossy().into_owned();
+        }
+
+        // 2. Check development workspace paths relative to target/debug or target/release
+        for rel in &[
+            "../../icons/icon.ico",
+            "../../../icons/icon.ico",
+            "../icons/icon.ico",
+            "icons/icon.ico",
+        ] {
+            let candidate = parent.join(rel);
+            if candidate.is_file() {
+                if let Ok(canonical) = candidate.canonicalize() {
+                    let path_str = canonical.to_string_lossy();
+                    let clean = path_str.strip_prefix(r"\\?\").unwrap_or(&path_str);
+                    return clean.to_string();
+                }
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
+
+    // 3. Fallback to embedded PE icon resource 0
+    format!("{},0", exe.to_string_lossy())
+}
+
+#[cfg(windows)]
 fn notify_shell() {
     #[link(name = "shell32")]
     extern "system" {
-        fn SHChangeNotify(event: i32, flags: u32, item1: isize, item2: isize);
+        fn SHChangeNotify(
+            event: i32,
+            flags: u32,
+            item1: *const std::ffi::c_void,
+            item2: *const std::ffi::c_void,
+        );
     }
-    // SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0x0000
+    // SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST | SHCNF_FLUSH = 0x1000
     unsafe {
-        SHChangeNotify(0x0800_0000, 0, 0, 0);
+        SHChangeNotify(0x0800_0000, 0x1000, std::ptr::null(), std::ptr::null());
     }
 }
 
@@ -234,11 +271,12 @@ pub fn register_file_associations() -> Result<FileAssociationStatus, CommandErro
         let exe = current_exe_path()?;
         let exe_str = exe.to_string_lossy();
         let open_cmd = build_open_command(&exe_str);
+        let icon_spec = resolve_icon_spec(&exe);
 
         write_default(&format!(r"Software\Classes\{}", PROGID), PROGID_DESC)?;
         write_default(
             &format!(r"Software\Classes\{}\DefaultIcon", PROGID),
-            &format!("{},0", exe_str),
+            &icon_spec,
         )?;
         write_default(
             &format!(r"Software\Classes\{}\shell\open\command", PROGID),
@@ -313,5 +351,23 @@ mod tests {
         assert!(status.supported);
         #[cfg(not(windows))]
         assert!(!status.supported);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_icon_spec_fallback_for_missing() {
+        let dummy = std::path::PathBuf::from(r"C:\NonExistent\app.exe");
+        assert_eq!(resolve_icon_spec(&dummy), r"C:\NonExistent\app.exe,0");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn resolve_icon_spec_finds_real_icon() {
+        let exe = std::env::current_exe().expect("current exe");
+        let spec = resolve_icon_spec(&exe);
+        assert!(
+            spec.ends_with("icon.ico"),
+            "Expected spec to end with icon.ico, got: {spec}"
+        );
     }
 }
