@@ -54,9 +54,9 @@ fn notify_shell() {
             item2: *const std::ffi::c_void,
         );
     }
-    // SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST = 0x0000
+    // SHCNE_ASSOCCHANGED = 0x08000000, SHCNF_IDLIST | SHCNF_FLUSH = 0x1000
     unsafe {
-        SHChangeNotify(0x0800_0000, 0, std::ptr::null(), std::ptr::null());
+        SHChangeNotify(0x0800_0000, 0x1000, std::ptr::null(), std::ptr::null());
     }
 }
 
@@ -144,7 +144,7 @@ fn create_menu_item(
 fn setup_archive_cascade_menu(
     root: &winreg::RegKey,
     base_path: &str,
-    exe_str: &str,
+    exe: &std::path::Path,
 ) -> Result<(), CommandError> {
     let (menu_key, _) = root.create_subkey(base_path).map_err(|err| {
         menu_error(
@@ -153,7 +153,8 @@ fn setup_archive_cascade_menu(
         )
     })?;
 
-    let icon = format!("{},0", exe_str);
+    let exe_str = exe.to_string_lossy();
+    let icon = crate::file_assoc::resolve_icon_spec(exe);
     let _ = menu_key.set_value("MUIVerb", &"Archi");
     let _ = menu_key.set_value("Icon", &icon);
     let _ = menu_key.set_value("SubCommands", &"");
@@ -187,7 +188,7 @@ fn setup_archive_cascade_menu(
 fn setup_files_cascade_menu(
     root: &winreg::RegKey,
     base_path: &str,
-    exe_str: &str,
+    exe: &std::path::Path,
 ) -> Result<(), CommandError> {
     let (menu_key, _) = root.create_subkey(base_path).map_err(|err| {
         menu_error(
@@ -196,7 +197,8 @@ fn setup_files_cascade_menu(
         )
     })?;
 
-    let icon = format!("{},0", exe_str);
+    let exe_str = exe.to_string_lossy();
+    let icon = crate::file_assoc::resolve_icon_spec(exe);
     let _ = menu_key.set_value("MUIVerb", &"Archi");
     let _ = menu_key.set_value("Icon", &icon);
     let _ = menu_key.set_value("SubCommands", &"");
@@ -298,7 +300,6 @@ pub fn register_archive_context_menu() -> Result<ContextMenuStatus, CommandError
         use winreg::RegKey;
 
         let exe = current_exe_path()?;
-        let exe_str = exe.to_string_lossy();
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
         for ext in ASSOCIATED_EXTENSIONS {
@@ -306,11 +307,11 @@ pub fn register_archive_context_menu() -> Result<ContextMenuStatus, CommandError
                 r"Software\Classes\SystemFileAssociations\.{}\shell\Archi",
                 ext
             );
-            setup_archive_cascade_menu(&hkcu, &base_path, &exe_str)?;
+            setup_archive_cascade_menu(&hkcu, &base_path, &exe)?;
         }
 
         let progid_path = format!(r"Software\Classes\{}\shell\Archi", PROGID);
-        setup_archive_cascade_menu(&hkcu, &progid_path, &exe_str)?;
+        setup_archive_cascade_menu(&hkcu, &progid_path, &exe)?;
 
         set_app_menu_flag(APP_ARCHIVE_MENU_VALUE, true)?;
         notify_shell();
@@ -363,11 +364,10 @@ pub fn register_files_context_menu() -> Result<ContextMenuStatus, CommandError> 
         use winreg::RegKey;
 
         let exe = current_exe_path()?;
-        let exe_str = exe.to_string_lossy();
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
-        setup_files_cascade_menu(&hkcu, r"Software\Classes\*\shell\Archi", &exe_str)?;
-        setup_files_cascade_menu(&hkcu, r"Software\Classes\Directory\shell\Archi", &exe_str)?;
+        setup_files_cascade_menu(&hkcu, r"Software\Classes\*\shell\Archi", &exe)?;
+        setup_files_cascade_menu(&hkcu, r"Software\Classes\Directory\shell\Archi", &exe)?;
 
         set_app_menu_flag(APP_FILES_MENU_VALUE, true)?;
         notify_shell();
