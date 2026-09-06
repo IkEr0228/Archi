@@ -109,6 +109,23 @@ pub fn get_startup_cli_quick(state: State<'_, StartupCliQuick>) -> Option<QuickC
     state.0.lock().ok().and_then(|mut guard| guard.take())
 }
 
+/// Await and return any pending multi-file/folder context-menu create batch on startup.
+#[command]
+pub async fn get_startup_create_batch(
+    batcher: State<'_, crate::batch_create::ContextMenuBatcher>,
+) -> Result<Option<crate::batch_create::CreateBatch>, CommandError> {
+    Ok(batcher.await_startup_batch().await)
+}
+
+/// Retrieve a secondary window create batch by ID.
+#[command]
+pub fn get_create_batch(
+    id: String,
+    batcher: State<'_, crate::batch_create::ContextMenuBatcher>,
+) -> Option<crate::batch_create::CreateBatch> {
+    batcher.get_batch(&id)
+}
+
 /// Calculate a collision-safe destination path for 1-click context menu creation.
 #[command]
 pub fn get_quick_archive_destination(

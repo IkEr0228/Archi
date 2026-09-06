@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod archive_edit;
+pub mod batch_create;
 pub mod bzip2_format;
 pub mod cli_handler;
 pub mod cli_open;

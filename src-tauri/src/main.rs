@@ -1,9 +1,7 @@
 // Always hide console window (Windows GUI app).
 #![windows_subsystem = "windows"]
 
-use archi_backend_lib::commands::{
-    self, QuickCreateStartup, StartupCliCreate, StartupCliPath, StartupCliQuick,
-};
+use archi_backend_lib::commands::{self, StartupCliCreate, StartupCliPath, StartupCliQuick};
 use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -94,32 +92,33 @@ fn main() {
                     }
                 }
                 archi_backend_lib::cli_handler::CliAction::AddZip(ref path) => {
-                    let _ = archi_backend_lib::window_manager::create_new_window_with_target(
-                        app,
-                        archi_backend_lib::window_manager::WindowInitialTarget::QuickCreate {
-                            path: path.to_string_lossy().into_owned(),
-                            format: "zip".to_string(),
-                        },
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.clone(),
+                        vec![path.to_string_lossy().into_owned()],
+                        "zip".to_string(),
+                        false,
                     );
                 }
                 archi_backend_lib::cli_handler::CliAction::Add7z(ref path) => {
-                    let _ = archi_backend_lib::window_manager::create_new_window_with_target(
-                        app,
-                        archi_backend_lib::window_manager::WindowInitialTarget::QuickCreate {
-                            path: path.to_string_lossy().into_owned(),
-                            format: "sevenZ".to_string(),
-                        },
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.clone(),
+                        vec![path.to_string_lossy().into_owned()],
+                        "sevenZ".to_string(),
+                        false,
                     );
                 }
                 archi_backend_lib::cli_handler::CliAction::Create(ref paths) => {
-                    if let Some(first) = paths.first() {
-                        let _ = archi_backend_lib::window_manager::create_new_window_with_target(
-                            app,
-                            archi_backend_lib::window_manager::WindowInitialTarget::Create(
-                                first.to_string_lossy().into_owned(),
-                            ),
-                        );
-                    }
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    let list: Vec<String> = paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    batcher.add_items(app.clone(), list, "zip".to_string(), false);
                 }
                 archi_backend_lib::cli_handler::CliAction::Open(archive_path) => {
                     if let Err(error) = archi_backend_lib::window_manager::create_new_window(
@@ -152,48 +151,52 @@ fn main() {
         .manage(StartupCliPath(Mutex::new(None)))
         .manage(StartupCliCreate(Mutex::new(None)))
         .manage(StartupCliQuick(Mutex::new(None)))
+        .manage(archi_backend_lib::batch_create::ContextMenuBatcher::default())
         .setup(move |app| {
-            let (startup_path, startup_create, startup_quick) = match action {
+            let startup_path = match action {
                 archi_backend_lib::cli_handler::CliAction::Open(ref p) => {
-                    (Some(p.to_string_lossy().into_owned()), None, None)
+                    Some(p.to_string_lossy().into_owned())
                 }
                 archi_backend_lib::cli_handler::CliAction::ExtractHere(ref p)
                 | archi_backend_lib::cli_handler::CliAction::ExtractTo(ref p) => {
-                    (Some(p.to_string_lossy().into_owned()), None, None)
+                    Some(p.to_string_lossy().into_owned())
                 }
                 archi_backend_lib::cli_handler::CliAction::Create(ref paths) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
                     let list: Vec<String> = paths
                         .iter()
                         .map(|p| p.to_string_lossy().into_owned())
                         .collect();
-                    (None, Some(list), None)
+                    batcher.add_items(app.handle().clone(), list, "zip".to_string(), true);
+                    None
                 }
-                archi_backend_lib::cli_handler::CliAction::AddZip(ref p) => (
-                    None,
-                    None,
-                    Some(QuickCreateStartup {
-                        source: p.to_string_lossy().into_owned(),
-                        format: "zip".to_string(),
-                    }),
-                ),
-                archi_backend_lib::cli_handler::CliAction::Add7z(ref p) => (
-                    None,
-                    None,
-                    Some(QuickCreateStartup {
-                        source: p.to_string_lossy().into_owned(),
-                        format: "sevenZ".to_string(),
-                    }),
-                ),
-                _ => (None, None, None),
+                archi_backend_lib::cli_handler::CliAction::AddZip(ref p) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.handle().clone(),
+                        vec![p.to_string_lossy().into_owned()],
+                        "zip".to_string(),
+                        true,
+                    );
+                    None
+                }
+                archi_backend_lib::cli_handler::CliAction::Add7z(ref p) => {
+                    let batcher =
+                        app.state::<archi_backend_lib::batch_create::ContextMenuBatcher>();
+                    batcher.add_items(
+                        app.handle().clone(),
+                        vec![p.to_string_lossy().into_owned()],
+                        "sevenZ".to_string(),
+                        true,
+                    );
+                    None
+                }
+                _ => None,
             };
             if let Ok(mut guard) = app.state::<StartupCliPath>().0.lock() {
                 *guard = startup_path;
-            }
-            if let Ok(mut guard) = app.state::<StartupCliCreate>().0.lock() {
-                *guard = startup_create;
-            }
-            if let Ok(mut guard) = app.state::<StartupCliQuick>().0.lock() {
-                *guard = startup_quick;
             }
 
             archi_backend_lib::drag_out::cleanup_old_drag_temp_dirs();
@@ -223,6 +226,8 @@ fn main() {
             commands::get_startup_cli_path,
             commands::get_startup_cli_create,
             commands::get_startup_cli_quick,
+            commands::get_startup_create_batch,
+            commands::get_create_batch,
             commands::get_quick_archive_destination,
             commands::open_archive_metadata,
             commands::test_archive_command,

@@ -95,6 +95,7 @@ pub enum WindowInitialTarget {
     Archive(String),
     Create(String),
     QuickCreate { path: String, format: String },
+    CreateBatch(String),
 }
 
 /// Spawn a new window with cascading positioning and optional initial target.
@@ -139,6 +140,10 @@ pub fn create_new_window_with_target(
                 )
                 .into(),
             ),
+            "Создание архива — Archi".to_string(),
+        ),
+        WindowInitialTarget::CreateBatch(ref batch_id) => (
+            WebviewUrl::App(format!("?create_batch={}", url_encode(batch_id)).into()),
             "Создание архива — Archi".to_string(),
         ),
         WindowInitialTarget::None => (WebviewUrl::default(), "Archi".to_string()),

@@ -592,12 +592,32 @@
 
     // Check if launched with initial archive, create path, or quick create via URL parameter (e.g. secondary window)
     const urlParams = new URLSearchParams(window.location.search);
+    const initialCreateBatch = urlParams.get('create_batch');
     const initialCreateAuto = urlParams.get('create_auto');
     const initialFormat = (urlParams.get('format') || 'zip') as 'zip' | 'sevenZ';
     const initialCreate = urlParams.get('create');
     const initialArchive = urlParams.get('archive');
 
-    if (initialCreateAuto) {
+    const unlistenBatch = listen<{ sources: string[]; format: string }>('open-create-batch', (event) => {
+      if (event.payload?.sources?.length) {
+        void openCreateModal(event.payload.sources, (event.payload.format || 'zip') as any);
+      }
+    });
+
+    if (initialCreateBatch) {
+      void (async () => {
+        try {
+          const batch = await invoke<{ sources: string[]; format: string } | null>('get_create_batch', {
+            id: initialCreateBatch
+          });
+          if (batch && batch.sources.length > 0) {
+            void openCreateModal(batch.sources, (batch.format || 'zip') as any);
+          }
+        } catch (e: unknown) {
+          errorMessage = `Failed to read create batch: ${formatInvokeError(e)}`;
+        }
+      })();
+    } else if (initialCreateAuto) {
       void openCreateModal([initialCreateAuto], initialFormat);
     } else if (initialCreate) {
       void openCreateModal([initialCreate], 'zip');
@@ -607,14 +627,9 @@
       // First-instance startup path (if launched with archive, create, or quick create arg).
       void (async () => {
         try {
-          const quick = await invoke<{ source: string; format: string } | null>('get_startup_cli_quick');
-          if (quick) {
-            void openCreateModal([quick.source], (quick.format || 'zip') as any);
-            return;
-          }
-          const createSources = await invoke<string[] | null>('get_startup_cli_create');
-          if (createSources && createSources.length > 0) {
-            void openCreateModal(createSources, 'zip');
+          const batch = await invoke<{ sources: string[]; format: string } | null>('get_startup_create_batch');
+          if (batch && batch.sources.length > 0) {
+            void openCreateModal(batch.sources, (batch.format || 'zip') as any);
             return;
           }
           const path = await invoke<string | null>('get_startup_cli_path');
@@ -669,6 +684,7 @@
       unlistenEditProgress.then((fn) => fn());
       unlistenExtractConflict.then((fn) => fn());
       unlistenCliOpen.then((fn) => fn());
+      unlistenBatch.then((fn) => fn());
       window.removeEventListener('keydown', onKeyDown);
     };
   });
