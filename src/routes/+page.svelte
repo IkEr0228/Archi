@@ -582,15 +582,23 @@
       }
     });
 
-    // Check if launched with initial archive path via URL parameter (e.g. secondary window)
+    // Check if launched with initial archive or create path via URL parameter (e.g. secondary window)
     const urlParams = new URLSearchParams(window.location.search);
+    const initialCreate = urlParams.get('create');
     const initialArchive = urlParams.get('archive');
-    if (initialArchive) {
+    if (initialCreate) {
+      openCreateModal([initialCreate]);
+    } else if (initialArchive) {
       openArchiveAtPath(initialArchive);
     } else {
-      // First-instance startup path (if launched with archive arg).
+      // First-instance startup path (if launched with archive or create arg).
       void (async () => {
         try {
+          const createSources = await invoke<string[] | null>('get_startup_cli_create');
+          if (createSources && createSources.length > 0) {
+            openCreateModal(createSources);
+            return;
+          }
           const path = await invoke<string | null>('get_startup_cli_path');
           if (path) {
             openArchiveAtPath(path);

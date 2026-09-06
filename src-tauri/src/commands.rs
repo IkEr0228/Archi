@@ -30,6 +30,9 @@ use tauri_plugin_dialog::DialogExt;
 /// CLI archive path resolved at process startup (first instance).
 pub struct StartupCliPath(pub Mutex<Option<String>>);
 
+/// CLI create source paths resolved at process startup (first instance).
+pub struct StartupCliCreate(pub Mutex<Option<Vec<String>>>);
+
 /// Production conflict resolver: apply-to-all policy, then UI via extract-conflict + wait.
 struct RegistryConflictResolver {
     registry: OperationRegistry,
@@ -82,6 +85,12 @@ pub fn get_app_name() -> String {
 /// Archive path from the first process argv, if any.
 #[command]
 pub fn get_startup_cli_path(state: State<'_, StartupCliPath>) -> Option<String> {
+    state.0.lock().ok().and_then(|guard| guard.clone())
+}
+
+/// Create source paths from the first process argv, if any.
+#[command]
+pub fn get_startup_cli_create(state: State<'_, StartupCliCreate>) -> Option<Vec<String>> {
     state.0.lock().ok().and_then(|guard| guard.clone())
 }
 

@@ -1,5 +1,8 @@
 use crate::extraction::{extract_any, AutoOverwriteConflictResolver};
-use crate::models::CommandError;
+use crate::models::{CommandError, CreateOptions};
+use crate::sevenz_format::create_sevenz_archive;
+use crate::zipper::create_zip_archive;
+use sevenz_rust2::Password;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
@@ -8,6 +11,9 @@ pub enum CliAction {
     Open(PathBuf),
     ExtractHere(PathBuf),
     ExtractTo(PathBuf),
+    Create(Vec<PathBuf>),
+    AddZip(PathBuf),
+    Add7z(PathBuf),
     Blank,
 }
 
@@ -43,6 +49,45 @@ pub fn archive_stem(path: &Path) -> String {
     filename.to_string()
 }
 
+/// Compute archive base stem from any input source (file or directory).
+pub fn source_stem(path: &Path) -> String {
+    if path.is_dir() {
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("archive")
+            .to_string()
+    } else {
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("archive")
+            .to_string()
+    }
+}
+
+/// Ensure archive path does not overwrite an existing file by finding stem (n).ext.
+pub fn unique_archive_path(base_path: &Path) -> PathBuf {
+    if !base_path.exists() {
+        return base_path.to_path_buf();
+    }
+    let parent = base_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = base_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("archive");
+    let ext = base_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("zip");
+
+    for i in 1..1000 {
+        let candidate = parent.join(format!("{stem} ({i}).{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    base_path.to_path_buf()
+}
+
 /// Parse command line arguments into structured actions.
 pub fn parse_cli_action(args: &[String], cwd: &Path) -> CliAction {
     if args.len() <= 1 {
@@ -51,27 +96,55 @@ pub fn parse_cli_action(args: &[String], cwd: &Path) -> CliAction {
 
     let mut extract_here = false;
     let mut extract_to = false;
-    let mut target_path: Option<PathBuf> = None;
+    let mut create = false;
+    let mut add_zip = false;
+    let mut add_7z = false;
+    let mut target_paths: Vec<PathBuf> = Vec::new();
 
     for arg in args.iter().skip(1) {
         if arg == "--extract-here" {
             extract_here = true;
         } else if arg == "--extract-to" {
             extract_to = true;
-        } else if !arg.starts_with('-') && target_path.is_none() {
+        } else if arg == "--create" {
+            create = true;
+        } else if arg == "--add-zip" {
+            add_zip = true;
+        } else if arg == "--add-7z" {
+            add_7z = true;
+        } else if !arg.starts_with('-') {
             let p = PathBuf::from(arg);
             let resolved = if p.is_absolute() { p } else { cwd.join(p) };
             let canonical = resolved.canonicalize().unwrap_or(resolved);
-            target_path = Some(canonical);
+            target_paths.push(canonical);
         }
     }
 
-    match (extract_here, extract_to, target_path) {
-        (true, _, Some(path)) => CliAction::ExtractHere(path),
-        (_, true, Some(path)) => CliAction::ExtractTo(path),
-        (_, _, Some(path)) => CliAction::Open(path),
-        _ => CliAction::Blank,
+    if extract_here {
+        if let Some(path) = target_paths.into_iter().next() {
+            return CliAction::ExtractHere(path);
+        }
+    } else if extract_to {
+        if let Some(path) = target_paths.into_iter().next() {
+            return CliAction::ExtractTo(path);
+        }
+    } else if create {
+        if !target_paths.is_empty() {
+            return CliAction::Create(target_paths);
+        }
+    } else if add_zip {
+        if let Some(path) = target_paths.into_iter().next() {
+            return CliAction::AddZip(path);
+        }
+    } else if add_7z {
+        if let Some(path) = target_paths.into_iter().next() {
+            return CliAction::Add7z(path);
+        }
+    } else if let Some(path) = target_paths.into_iter().next() {
+        return CliAction::Open(path);
     }
+
+    CliAction::Blank
 }
 
 /// Execute headless extraction directly from CLI.
@@ -131,6 +204,83 @@ pub fn execute_cli_extraction(
 
     notify_shell_folder_updated(&destination);
     Ok(destination)
+}
+
+/// Execute 1-click compression to .zip.
+pub fn execute_cli_add_zip(source_path: &Path) -> Result<PathBuf, CommandError> {
+    if !source_path.exists() {
+        return Err(CommandError::new(
+            "not_found",
+            format!("Source path does not exist: {}", source_path.display()),
+        ));
+    }
+
+    let parent = source_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = source_stem(source_path);
+    let base_output = parent.join(format!("{stem}.zip"));
+    let output_path = unique_archive_path(&base_output);
+
+    let cancelled = AtomicBool::new(false);
+    let options = CreateOptions::default_zip();
+    let op_id = format!(
+        "cli-add-zip-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    );
+
+    let source_str = source_path.to_string_lossy().into_owned();
+    create_zip_archive(
+        &[source_str],
+        &output_path,
+        &op_id,
+        &cancelled,
+        &options,
+        |_| {},
+    )?;
+
+    notify_shell_folder_updated(parent);
+    Ok(output_path)
+}
+
+/// Execute 1-click compression to .7z.
+pub fn execute_cli_add_7z(source_path: &Path) -> Result<PathBuf, CommandError> {
+    if !source_path.exists() {
+        return Err(CommandError::new(
+            "not_found",
+            format!("Source path does not exist: {}", source_path.display()),
+        ));
+    }
+
+    let parent = source_path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = source_stem(source_path);
+    let base_output = parent.join(format!("{stem}.7z"));
+    let output_path = unique_archive_path(&base_output);
+
+    let cancelled = AtomicBool::new(false);
+    let options = CreateOptions::default_7z();
+    let op_id = format!(
+        "cli-add-7z-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    );
+
+    let source_str = source_path.to_string_lossy().into_owned();
+    create_sevenz_archive(
+        &[source_str],
+        &output_path,
+        &op_id,
+        &cancelled,
+        Password::empty(),
+        &options,
+        |_| {},
+    )?;
+
+    notify_shell_folder_updated(parent);
+    Ok(output_path)
 }
 
 #[cfg(windows)]
@@ -210,6 +360,21 @@ mod tests {
     }
 
     #[test]
+    fn test_source_stem_file_and_dir() {
+        assert_eq!(source_stem(Path::new(r"C:\work\report.docx")), "report");
+        assert_eq!(
+            source_stem(Path::new(r"C:\work\folder_name")),
+            "folder_name"
+        );
+    }
+
+    #[test]
+    fn test_unique_archive_path() {
+        let base = PathBuf::from(r"C:\non_existent_folder_xyz\test.zip");
+        assert_eq!(unique_archive_path(&base), base);
+    }
+
+    #[test]
     fn test_parse_cli_actions() {
         let cwd = PathBuf::from(r"C:\work");
 
@@ -243,6 +408,36 @@ mod tests {
         assert_eq!(
             parse_cli_action(&extract_to_args, &cwd),
             CliAction::ExtractTo(PathBuf::from(r"C:\work\file.zip"))
+        );
+
+        let create_args = vec![
+            String::from("archi.exe"),
+            String::from("--create"),
+            String::from(r"C:\work\document.pdf"),
+        ];
+        assert_eq!(
+            parse_cli_action(&create_args, &cwd),
+            CliAction::Create(vec![PathBuf::from(r"C:\work\document.pdf")])
+        );
+
+        let add_zip_args = vec![
+            String::from("archi.exe"),
+            String::from("--add-zip"),
+            String::from(r"C:\work\my_folder"),
+        ];
+        assert_eq!(
+            parse_cli_action(&add_zip_args, &cwd),
+            CliAction::AddZip(PathBuf::from(r"C:\work\my_folder"))
+        );
+
+        let add_7z_args = vec![
+            String::from("archi.exe"),
+            String::from("--add-7z"),
+            String::from(r"C:\work\my_folder"),
+        ];
+        assert_eq!(
+            parse_cli_action(&add_7z_args, &cwd),
+            CliAction::Add7z(PathBuf::from(r"C:\work\my_folder"))
         );
     }
 }

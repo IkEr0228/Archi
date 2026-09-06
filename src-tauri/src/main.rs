@@ -1,7 +1,7 @@
 // Hide console window in release builds (Windows GUI app).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use archi_backend_lib::commands::{self, StartupCliPath};
+use archi_backend_lib::commands::{self, StartupCliCreate, StartupCliPath};
 use archi_backend_lib::operations::OperationRegistry;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -45,6 +45,18 @@ fn main() {
                     return;
                 }
             }
+        }
+        archi_backend_lib::cli_handler::CliAction::AddZip(ref path) => {
+            if let Err(err) = archi_backend_lib::cli_handler::execute_cli_add_zip(path) {
+                archi_backend_lib::cli_handler::show_native_error_box("Archi", &err.message);
+            }
+            return;
+        }
+        archi_backend_lib::cli_handler::CliAction::Add7z(ref path) => {
+            if let Err(err) = archi_backend_lib::cli_handler::execute_cli_add_7z(path) {
+                archi_backend_lib::cli_handler::show_native_error_box("Archi", &err.message);
+            }
+            return;
         }
         _ => {}
     }
@@ -91,6 +103,32 @@ fn main() {
                         }
                     }
                 }
+                archi_backend_lib::cli_handler::CliAction::AddZip(ref path) => {
+                    if let Err(err) = archi_backend_lib::cli_handler::execute_cli_add_zip(path) {
+                        archi_backend_lib::cli_handler::show_native_error_box(
+                            "Archi",
+                            &err.message,
+                        );
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::Add7z(ref path) => {
+                    if let Err(err) = archi_backend_lib::cli_handler::execute_cli_add_7z(path) {
+                        archi_backend_lib::cli_handler::show_native_error_box(
+                            "Archi",
+                            &err.message,
+                        );
+                    }
+                }
+                archi_backend_lib::cli_handler::CliAction::Create(ref paths) => {
+                    if let Some(first) = paths.first() {
+                        let _ = archi_backend_lib::window_manager::create_new_window_with_target(
+                            app,
+                            archi_backend_lib::window_manager::WindowInitialTarget::Create(
+                                first.to_string_lossy().into_owned(),
+                            ),
+                        );
+                    }
+                }
                 archi_backend_lib::cli_handler::CliAction::Open(archive_path) => {
                     if let Err(error) = archi_backend_lib::window_manager::create_new_window(
                         app,
@@ -120,19 +158,30 @@ fn main() {
         .plugin(tauri_plugin_drag::init())
         .manage(OperationRegistry::default())
         .manage(StartupCliPath(Mutex::new(None)))
+        .manage(StartupCliCreate(Mutex::new(None)))
         .setup(move |app| {
-            let startup_path = match action {
+            let (startup_path, startup_create) = match action {
                 archi_backend_lib::cli_handler::CliAction::Open(ref p) => {
-                    Some(p.to_string_lossy().into_owned())
+                    (Some(p.to_string_lossy().into_owned()), None)
                 }
                 archi_backend_lib::cli_handler::CliAction::ExtractHere(ref p)
                 | archi_backend_lib::cli_handler::CliAction::ExtractTo(ref p) => {
-                    Some(p.to_string_lossy().into_owned())
+                    (Some(p.to_string_lossy().into_owned()), None)
                 }
-                _ => None,
+                archi_backend_lib::cli_handler::CliAction::Create(ref paths) => {
+                    let list: Vec<String> = paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    (None, Some(list))
+                }
+                _ => (None, None),
             };
             if let Ok(mut guard) = app.state::<StartupCliPath>().0.lock() {
                 *guard = startup_path;
+            }
+            if let Ok(mut guard) = app.state::<StartupCliCreate>().0.lock() {
+                *guard = startup_create;
             }
 
             archi_backend_lib::drag_out::cleanup_old_drag_temp_dirs();
@@ -160,6 +209,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_app_name,
             commands::get_startup_cli_path,
+            commands::get_startup_cli_create,
             commands::open_archive_metadata,
             commands::test_archive_command,
             commands::extract_archive_command,
