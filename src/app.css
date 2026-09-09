@@ -1068,6 +1068,23 @@ button.create-primary {
   white-space: nowrap;
 }
 
+.progress-stats {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--pastel-mint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-stats-sep {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
 /* Extract conflict dialog (above progress modal) */
 .conflict-overlay {
   z-index: 2100;

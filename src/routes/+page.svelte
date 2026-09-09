@@ -84,6 +84,10 @@
     total_files?: number;
     /** Optional phase: plan | append | rebuild | extract | repack | finalize */
     phase?: string | null;
+    bytes_processed?: number | null;
+    total_bytes?: number | null;
+    speed_bytes_per_sec?: number | null;
+    eta_seconds?: number | null;
   }
 
   interface OperationSummary {
@@ -331,6 +335,21 @@
   let progressPercentage = $state(0);
   let progressText = $state('');
   let progressPhase = $state('');
+  let progressBytesProcessed = $state<number | null>(null);
+  let progressTotalBytes = $state<number | null>(null);
+  let progressSpeed = $state<number | null>(null);
+  let progressEta = $state<number | null>(null);
+
+  function resetProgressModal(initialText: string) {
+    showProgressModal = true;
+    progressPercentage = 0;
+    progressPhase = '';
+    progressText = initialText;
+    progressBytesProcessed = null;
+    progressTotalBytes = null;
+    progressSpeed = null;
+    progressEta = null;
+  }
 
   // Extract conflict dialog state
   let conflictPrompt = $state<null | {
@@ -532,17 +551,25 @@
       pendingProgress = null;
       if (!payload || !showProgressModal) return;
       const nextPhase = payload.phase ?? '';
-      // Skip no-op updates (same % + current file + phase).
+      const nextBytes = payload.bytes_processed ?? null;
+      const nextSpeed = payload.speed_bytes_per_sec ?? null;
+      // Skip no-op updates.
       if (
         payload.percentage === progressPercentage &&
         payload.current_file === progressText &&
-        nextPhase === progressPhase
+        nextPhase === progressPhase &&
+        nextBytes === progressBytesProcessed &&
+        nextSpeed === progressSpeed
       ) {
         return;
       }
       progressPercentage = payload.percentage;
       progressText = payload.current_file;
       progressPhase = nextPhase;
+      progressBytesProcessed = nextBytes;
+      progressTotalBytes = payload.total_bytes ?? null;
+      progressSpeed = nextSpeed;
+      progressEta = payload.eta_seconds ?? null;
     };
 
     const updateProgress = (event: { payload: unknown }) => {
@@ -777,6 +804,24 @@
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
+  function formatSpeed(bytesPerSec: number): string {
+    if (!Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return '0 B/s';
+    return `${formatBytes(bytesPerSec)}/s`;
+  }
+
+  function formatEta(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+    const s = Math.round(seconds);
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    if (mins >= 60) {
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      return `${hours}h ${remMins.toString().padStart(2, '0')}m`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
   function openProperties() {
     if (!isArchiveOpen) return;
     showPropertiesModal = true;
@@ -790,10 +835,7 @@
     try {
       operationId = crypto.randomUUID();
       activeOperation = { id: operationId, kind: 'test' };
-      showProgressModal = true;
-      progressPercentage = 0;
-      progressPhase = '';
-      progressText = 'Starting integrity test...';
+      resetProgressModal('Starting integrity test...');
       errorMessage = '';
 
       const summary = await invoke<TestArchiveSummary>('test_archive_command', {
@@ -893,10 +935,7 @@
 
       operationId = crypto.randomUUID();
       activeOperation = { id: operationId, kind: 'extract' };
-      showProgressModal = true;
-      progressPercentage = 0;
-      progressPhase = '';
-      progressText = 'Starting extraction...';
+      resetProgressModal('Starting extraction...');
 
       const selected =
         mode === 'selected' ? Array.from(selectedPaths) : null;
@@ -1072,10 +1111,7 @@
       errorMessage = '';
       operationId = crypto.randomUUID();
       activeOperation = { id: operationId, kind: 'create' };
-      showProgressModal = true;
-      progressPercentage = 0;
-      progressPhase = '';
-      progressText = 'Starting archive creation...';
+      resetProgressModal('Starting archive creation...');
 
       const summary = await invoke<OperationSummary>('create_archive_command', {
         sourcePaths: sources,
@@ -1213,10 +1249,7 @@
     try {
       operationId = crypto.randomUUID();
       activeOperation = { id: operationId, kind: 'edit' };
-      showProgressModal = true;
-      progressPercentage = 0;
-      progressPhase = '';
-      progressText = `Starting ${label}...`;
+      resetProgressModal(`Starting ${label}...`);
       errorMessage = '';
       operationStatus = `${label}...`;
 
@@ -1668,6 +1701,22 @@
         <div class="progress-file">
           {#if progressPhase}{progressPhase} · {/if}{progressText}
         </div>
+        {#if progressBytesProcessed !== null}
+          <div class="progress-stats">
+            <span>
+              {formatBytes(progressBytesProcessed)}
+              {#if progressTotalBytes} / {formatBytes(progressTotalBytes)}{/if}
+            </span>
+            {#if progressSpeed !== null && progressSpeed > 0}
+              <span class="progress-stats-sep">·</span>
+              <span>{formatSpeed(progressSpeed)}</span>
+            {/if}
+            {#if progressEta !== null && progressEta > 0}
+              <span class="progress-stats-sep">·</span>
+              <span>ETA: {formatEta(progressEta)}</span>
+            {/if}
+          </div>
+        {/if}
       </div>
       <div class="modal-footer">
         <button class="cancel-operation" onclick={cancelOperation} disabled={conflictPrompt !== null}>
