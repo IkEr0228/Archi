@@ -564,6 +564,44 @@ fn extract_windows(
     }
 }
 
+#[cfg(windows)]
+struct PriorityGuard {
+    previous: i32,
+}
+
+#[cfg(windows)]
+impl PriorityGuard {
+    fn new_below_normal() -> Self {
+        unsafe {
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn GetCurrentThread() -> isize;
+                fn GetThreadPriority(hThread: isize) -> i32;
+                fn SetThreadPriority(hThread: isize, nPriority: i32) -> i32;
+            }
+            const THREAD_PRIORITY_BELOW_NORMAL: i32 = -1;
+            let thread = GetCurrentThread();
+            let prev = GetThreadPriority(thread);
+            let _ = SetThreadPriority(thread, THREAD_PRIORITY_BELOW_NORMAL);
+            Self { previous: prev }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PriorityGuard {
+    fn drop(&mut self) {
+        unsafe {
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn GetCurrentThread() -> isize;
+                fn SetThreadPriority(hThread: isize, nPriority: i32) -> i32;
+            }
+            let _ = SetThreadPriority(GetCurrentThread(), self.previous);
+        }
+    }
+}
+
 /// Format-agnostic extract entry point (zip / tar / tar.gz / gzip).
 pub fn extract_any(
     archive_path: &Path,
@@ -575,6 +613,9 @@ pub fn extract_any(
     conflict_resolver: &dyn ConflictResolver,
     emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
+    #[cfg(windows)]
+    let _priority_guard = PriorityGuard::new_below_normal();
+
     match detect_format(archive_path)? {
         ArchiveFormat::Zip => extract_archive(
             archive_path,

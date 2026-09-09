@@ -241,6 +241,57 @@ fn allocate_packed(entries: &mut [ArchiveEntry], packed_total: u64, total_uncomp
     }
 }
 
+fn detect_max_dict_size(archive: &sevenz_rust2::Archive) -> u32 {
+    let mut max_dict: u32 = 0;
+    for block in &archive.blocks {
+        for coder in &block.coders {
+            // ID_LZMA2 is &[0x21]
+            if coder.encoder_method_id() == [0x21] && !coder.properties().is_empty() {
+                let bits = 0xFF & coder.properties()[0] as u32;
+                if (bits & !0x3F) == 0 && bits <= 40 {
+                    let size = if bits == 40 {
+                        0xFFFF_FFFF
+                    } else {
+                        (2 | (bits & 0x1)) << (bits / 2 + 11)
+                    };
+                    max_dict = max_dict.max(size);
+                }
+            }
+        }
+    }
+    max_dict
+}
+
+fn compute_optimal_threads(archive: &sevenz_rust2::Archive) -> u32 {
+    let available = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+
+    // Reserve 1-2 cores for system responsiveness:
+    let base_threads = match available {
+        0..=2 => 1,
+        3..=4 => 2,
+        5..=8 => 4,
+        9..=16 => 6,
+        _ => (available.saturating_sub(2)).min(8),
+    };
+
+    let max_dict = detect_max_dict_size(archive);
+    // If dictionary is 64 MiB or larger, multi-threading in LZMA2 uses massive RAM (dictionaries × threads).
+    // Clamp thread count to keep memory within reasonable bounds (~500 MB - 1 GB).
+    let threads = if max_dict >= 128 * 1024 * 1024 {
+        base_threads.min(2)
+    } else if max_dict >= 64 * 1024 * 1024 {
+        base_threads.min(3)
+    } else if max_dict >= 32 * 1024 * 1024 {
+        base_threads.min(4)
+    } else {
+        base_threads
+    };
+
+    threads.max(1) as u32
+}
+
 /// Extract 7z with path validation and secure destination writes.
 pub fn extract_sevenz(
     path: &Path,
@@ -273,6 +324,8 @@ pub fn extract_sevenz(
 
     let pw = password.as_deref().map_or(Password::empty(), Password::new);
     let mut reader = ArchiveReader::open(path, pw).map_err(map_sz_error)?;
+    let thread_count = compute_optimal_threads(reader.archive());
+    reader.set_thread_count(thread_count);
     let names: Vec<String> = reader
         .archive()
         .files
