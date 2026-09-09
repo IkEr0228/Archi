@@ -15,7 +15,7 @@ use crate::windows_fs::{cleanup_created as cleanup_windows_created, Directory, L
 use crate::xz_format::extract_xz;
 use std::collections::{HashSet, VecDeque};
 use std::fs;
-use std::io::{Read, Write};
+use crate::io_perf::PROGRESS_INTERVAL;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -23,8 +23,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
 use zip::ZipArchive;
-
-use crate::io_perf::{IO_BUFFER_SIZE_LARGE as BUFFER_SIZE, PROGRESS_INTERVAL};
 
 /// Check cancel during ZIP central-directory plan walk every this many entries.
 const PLAN_CANCEL_CHECK_INTERVAL: usize = 256;
@@ -328,30 +326,53 @@ fn extract_windows(
             format!("Cannot securely open destination: {error}"),
         )
     })?;
+    let mut global_total_bytes: u64 = 0;
+    for plan in plans {
+        if !plan.is_directory {
+            if let Ok(entry) = archive.by_index(plan.index) {
+                global_total_bytes = global_total_bytes.saturating_add(entry.size());
+            }
+        }
+    }
+
     let total_files = plans.len() as u64;
     let mut created = Vec::new();
     let mut dir_cache = ahash::AHashMap::new();
     let mut extracted_files = 0_u64;
     let mut skipped_files = 0_u64;
+    let mut global_bytes_processed = 0_u64;
+    let mut speed_tracker = crate::stream_pipeline::SpeedTracker::new();
+    let mut stream_progress_gate = crate::io_perf::ProgressGate::new();
     let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
-    let mut buffer = vec![0_u8; BUFFER_SIZE];
     let result = (|| -> Result<OperationSummary, CommandError> {
         for plan in plans {
             if cancelled.load(Ordering::Relaxed) {
                 return Err(cancelled_error());
             }
             if last_progress.elapsed() >= PROGRESS_INTERVAL {
+                let current_speed = speed_tracker.update(global_bytes_processed);
+                let eta = speed_tracker.estimate_eta(global_bytes_processed, global_total_bytes);
                 emit(OperationProgress {
                     operation_id: operation_id.into(),
                     extracted_files,
                     total_files,
                     current_file: plan.name.clone(),
-                    percentage: if total_files == 0 {
+                    percentage: if global_total_bytes > 0 {
+                        (((global_bytes_processed as f64 / global_total_bytes as f64) * 100.0) as f32).clamp(0.0, 99.9)
+                    } else if total_files == 0 {
                         100.0
                     } else {
                         extracted_files as f32 * 100.0 / total_files as f32
                     },
-                    phase: None,
+                    phase: Some("extract".into()),
+                    bytes_processed: Some(global_bytes_processed),
+                    total_bytes: if global_total_bytes > 0 {
+                        Some(global_total_bytes)
+                    } else {
+                        None
+                    },
+                    speed_bytes_per_sec: Some(current_speed),
+                    eta_seconds: eta,
                     ..Default::default()
                 });
                 last_progress = Instant::now();
@@ -472,49 +493,31 @@ fn extract_windows(
                     })?,
                 };
                 let entry_size = entry.size();
-                if entry_size > 0 {
+                if crate::stream_pipeline::should_preallocate_len(entry_size) {
                     let _ = output.as_ref().set_len(entry_size);
                 }
-                {
-                    let mut writer = output.as_ref();
-                    loop {
-                        if cancelled.load(Ordering::Relaxed) {
-                            return Err(cancelled_error());
-                        }
-                        let read = entry.read(&mut buffer).map_err(|error| {
-                            let lower = error.to_string().to_ascii_lowercase();
-                            if lower.contains("password")
-                                || lower.contains("decrypt")
-                                || lower.contains("authentication")
-                            {
-                                extraction_error(
-                                    "password_required",
-                                    "Invalid password provided. Please try again.",
-                                )
-                            } else {
-                                extraction_error(
-                                    "invalid_archive",
-                                    format!("Cannot read ZIP data: {error}"),
-                                )
-                            }
-                        })?;
-                        if read == 0 {
-                            break;
-                        }
-                        writer.write_all(&buffer[..read]).map_err(|error| {
-                            extraction_error(
-                                "write_failed",
-                                format!("Cannot write extracted file: {error}"),
-                            )
-                        })?;
-                    }
-                    writer.flush().map_err(|error| {
-                        extraction_error(
-                            "write_failed",
-                            format!("Cannot flush extracted file: {error}"),
-                        )
-                    })?;
-                }
+                let file_clone = output.as_ref().try_clone().map_err(|error| {
+                    extraction_error(
+                        "write_failed",
+                        format!("Cannot clone destination file handle: {error}"),
+                    )
+                })?;
+                let pipeline = crate::stream_pipeline::StreamPipelineWriter::new(file_clone, None);
+                let written = crate::stream_pipeline::pipe_reader_to_pipeline(
+                    &mut entry,
+                    pipeline,
+                    cancelled,
+                    operation_id,
+                    &plan.name,
+                    extracted_files,
+                    total_files,
+                    global_bytes_processed,
+                    global_total_bytes,
+                    &mut speed_tracker,
+                    &mut stream_progress_gate,
+                    emit,
+                )?;
+                global_bytes_processed = global_bytes_processed.saturating_add(written);
                 drop(output);
                 let created_file = created.get_mut(created_index).ok_or_else(|| {
                     extraction_error("write_failed", "Temporary file tracking was unavailable.")
@@ -537,8 +540,12 @@ fn extract_windows(
             current_file: "Completed".into(),
             percentage: 100.0,
             phase: None,
+            bytes_processed: Some(global_total_bytes),
+            total_bytes: Some(global_total_bytes),
+            speed_bytes_per_sec: None,
+            eta_seconds: None,
             ..Default::default()
-});
+        });
         Ok(OperationSummary {
             operation_id: operation_id.into(),
             extracted_files,

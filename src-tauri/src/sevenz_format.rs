@@ -23,7 +23,7 @@ use sevenz_rust2::encoder_options::{AesEncoderOptions, Lzma2Options};
 use sevenz_rust2::{ArchiveEntry as SzEntry, ArchiveReader, ArchiveWriter, Password};
 use std::collections::BTreeSet;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -355,9 +355,26 @@ pub fn extract_sevenz(
     }
     .max(1);
 
+    let global_total_bytes: u64 = reader
+        .archive()
+        .files
+        .iter()
+        .filter(|f| !f.is_anti_item && !f.is_directory)
+        .filter(|f| match &selection_index {
+            Some(idx) => match normalize_member_name(f.name()) {
+                Ok(n) => idx.includes_normalized(&n),
+                Err(_) => false,
+            },
+            None => true,
+        })
+        .map(|f| f.size)
+        .sum();
+
     let mut extracted = 0_u64;
     let mut skipped = 0_u64;
     let mut processed = 0_u64;
+    let mut global_bytes_processed = 0_u64;
+    let mut speed_tracker = crate::stream_pipeline::SpeedTracker::new();
     let mut last = Instant::now();
     let mut io_buffer = vec![0_u8; BUFFER_SIZE];
 
@@ -413,15 +430,29 @@ pub fn extract_sevenz(
         }
 
         if !emitted_recent(&mut last) {
+            let cur_speed = speed_tracker.update(global_bytes_processed);
+            let eta = speed_tracker.estimate_eta(global_bytes_processed, global_total_bytes);
             emit(OperationProgress {
                 operation_id: operation_id.into(),
                 extracted_files: extracted,
                 total_files,
                 current_file: normalized.clone(),
-                percentage: progress_percentage(processed, total_files),
-                phase: None,
+                percentage: if global_total_bytes > 0 {
+                    (((global_bytes_processed as f64 / global_total_bytes as f64) * 100.0) as f32).clamp(0.0, 99.9)
+                } else {
+                    progress_percentage(processed, total_files)
+                },
+                phase: Some("extract".into()),
+                bytes_processed: Some(global_bytes_processed),
+                total_bytes: if global_total_bytes > 0 {
+                    Some(global_total_bytes)
+                } else {
+                    None
+                },
+                speed_bytes_per_sec: Some(cur_speed),
+                eta_seconds: eta,
                 ..Default::default()
-});
+            });
         }
 
         // `destination` is already canonical at extract entry.
@@ -477,8 +508,14 @@ pub fn extract_sevenz(
             &mut io_buffer,
         );
         match write_result {
-            Ok(true) => extracted = extracted.saturating_add(1),
-            Ok(false) => skipped = skipped.saturating_add(1),
+            Ok(true) => {
+                extracted = extracted.saturating_add(1);
+                global_bytes_processed = global_bytes_processed.saturating_add(entry.size);
+            }
+            Ok(false) => {
+                skipped = skipped.saturating_add(1);
+                global_bytes_processed = global_bytes_processed.saturating_add(entry.size);
+            }
             Err(e) if e.code == "cancelled" => return Err(sz_cb_err("cancelled")),
             Err(e) => return Err(sz_cb_err(e.message)),
         }
@@ -524,8 +561,12 @@ pub fn extract_sevenz(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
+        bytes_processed: Some(global_total_bytes),
+        total_bytes: Some(global_total_bytes),
+        speed_bytes_per_sec: None,
+        eta_seconds: None,
         ..Default::default()
-});
+    });
 
     Ok(OperationSummary {
         operation_id: operation_id.into(),
@@ -645,34 +686,34 @@ fn write_extracted_file(
     let output = parent
         .create_file(&temp_name, created)
         .map_err(|error| sz_error("write_failed", format!("Cannot create temp file: {error}")))?;
-    if expected_size > 0 {
+    if crate::stream_pipeline::should_preallocate_len(expected_size) {
         let _ = output.as_ref().set_len(expected_size);
     }
-    {
-        let mut writer = output.as_ref();
-        loop {
-            if cancelled.load(Ordering::Relaxed) {
-                drop(output);
-                let _ = cleanup_windows_created(created);
-                return Err(sz_error("cancelled", "Archive extraction was cancelled."));
-            }
-            let n = reader.read(buffer).map_err(|error| {
-                sz_error("invalid_archive", format!("Cannot read 7z member: {error}"))
-            })?;
-            if n == 0 {
-                break;
-            }
-            writer.write_all(&buffer[..n]).map_err(|error| {
-                sz_error(
-                    "write_failed",
-                    format!("Cannot write extracted file: {error}"),
-                )
-            })?;
+    let file_clone = output.as_ref().try_clone().map_err(|error| {
+        sz_error("write_failed", format!("Cannot clone temp file handle: {error}"))
+    })?;
+    let mut pipeline = crate::stream_pipeline::StreamPipelineWriter::new(file_clone, None);
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            drop(pipeline);
+            drop(output);
+            let _ = cleanup_windows_created(created);
+            return Err(sz_error("cancelled", "Archive extraction was cancelled."));
         }
-        writer
-            .flush()
-            .map_err(|error| sz_error("write_failed", format!("Cannot flush file: {error}")))?;
+        let n = reader.read(buffer).map_err(|error| {
+            sz_error("invalid_archive", format!("Cannot read 7z member: {error}"))
+        })?;
+        if n == 0 {
+            break;
+        }
+        pipeline.write_bytes(&buffer[..n]).map_err(|error| {
+            sz_error(
+                "write_failed",
+                format!("Cannot write extracted file: {error}"),
+            )
+        })?;
     }
+    pipeline.finish().map_err(|e| sz_error(&e.code, &e.message))?;
     drop(output);
     let created_file = created
         .get_mut(created_index)

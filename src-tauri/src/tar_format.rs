@@ -20,7 +20,7 @@ use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -455,39 +455,39 @@ fn extract_one_file_windows(
     let output = parent
         .create_file(&temp_name, created)
         .map_err(|error| tar_error("write_failed", format!("Cannot create temp file: {error}")))?;
-    if expected_size > 0 {
+    if crate::stream_pipeline::should_preallocate_len(expected_size) {
         let _ = output.as_ref().set_len(expected_size);
     }
 
+    let file_clone = output.as_ref().try_clone().map_err(|error| {
+        tar_error("write_failed", format!("Cannot clone temp file handle: {error}"))
+    })?;
+    let mut pipeline = crate::stream_pipeline::StreamPipelineWriter::new(file_clone, None);
     let mut buffer = vec![0_u8; BUFFER_SIZE];
-    {
-        let mut writer = output.as_ref();
-        loop {
-            if cancelled.load(Ordering::Relaxed) {
-                drop(output);
-                let _ = cleanup_windows_created(created);
-                return Err(tar_error("cancelled", "Archive extraction was cancelled."));
-            }
-            let n = reader.read(&mut buffer).map_err(|error| {
-                tar_error(
-                    "invalid_archive",
-                    format!("Cannot read tar member: {error}"),
-                )
-            })?;
-            if n == 0 {
-                break;
-            }
-            writer.write_all(&buffer[..n]).map_err(|error| {
-                tar_error(
-                    "write_failed",
-                    format!("Cannot write extracted file: {error}"),
-                )
-            })?;
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            drop(pipeline);
+            drop(output);
+            let _ = cleanup_windows_created(created);
+            return Err(tar_error("cancelled", "Archive extraction was cancelled."));
         }
-        writer
-            .flush()
-            .map_err(|error| tar_error("write_failed", format!("Cannot flush file: {error}")))?;
+        let n = reader.read(&mut buffer).map_err(|error| {
+            tar_error(
+                "invalid_archive",
+                format!("Cannot read tar member: {error}"),
+            )
+        })?;
+        if n == 0 {
+            break;
+        }
+        pipeline.write_bytes(&buffer[..n]).map_err(|error| {
+            tar_error(
+                "write_failed",
+                format!("Cannot write extracted file: {error}"),
+            )
+        })?;
     }
+    pipeline.finish().map_err(|e| tar_error(&e.code, &e.message))?;
     drop(output);
 
     let created_file = created
@@ -658,11 +658,12 @@ fn extract_tar_reader<R: Read>(
         Some(sel) => Some(SelectionIndex::from_selected(sel)?),
         None => None,
     };
-
     let mut extracted = 0_u64;
     let mut skipped = 0_u64;
     let mut planned_or_extracted = 0_u64;
-    let mut last_progress = Instant::now();
+    let mut global_bytes_processed = 0_u64;
+    let mut speed_tracker = crate::stream_pipeline::SpeedTracker::new();
+    let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
 
     #[cfg(windows)]
     let mut created = Vec::new();
@@ -758,6 +759,7 @@ fn extract_tar_reader<R: Read>(
             planned_or_extracted = planned_or_extracted.saturating_add(1);
             if last_progress.elapsed() >= PROGRESS_INTERVAL || planned_or_extracted == 1 {
                 last_progress = Instant::now();
+                let cur_speed = speed_tracker.update(global_bytes_processed);
                 emit(OperationProgress {
                     operation_id: operation_id.into(),
                     extracted_files: extracted,
@@ -765,9 +767,13 @@ fn extract_tar_reader<R: Read>(
                     total_files: planned_or_extracted.max(extracted).max(1),
                     current_file: name.clone(),
                     percentage: 0.0,
-                    phase: None,
+                    phase: Some("extract".into()),
+                    bytes_processed: Some(global_bytes_processed),
+                    total_bytes: None,
+                    speed_bytes_per_sec: Some(cur_speed),
+                    eta_seconds: None,
                     ..Default::default()
-});
+                });
             }
 
             if is_dir {
@@ -818,8 +824,10 @@ fn extract_tar_reader<R: Read>(
             )?;
             if written {
                 extracted = extracted.saturating_add(1);
+                global_bytes_processed = global_bytes_processed.saturating_add(entry_size);
             } else {
                 skipped = skipped.saturating_add(1);
+                global_bytes_processed = global_bytes_processed.saturating_add(entry_size);
                 // Skip leaves unread body — drain so the next tar member stays aligned.
                 discard_tar_entry(&mut entry)?;
             }
@@ -861,8 +869,12 @@ fn extract_tar_reader<R: Read>(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
+        bytes_processed: Some(global_bytes_processed),
+        total_bytes: Some(global_bytes_processed),
+        speed_bytes_per_sec: None,
+        eta_seconds: None,
         ..Default::default()
-});
+    });
 
     Ok(OperationSummary {
         operation_id: operation_id.into(),
