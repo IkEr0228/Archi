@@ -381,7 +381,8 @@ pub fn extract_rar(
                 current_file: normalized,
                 percentage: (extracted_files as f32 / total_files as f32).min(1.0),
                 phase: Some("extract".into()),
-            });
+                ..Default::default()
+});
         }
     }
 
@@ -392,7 +393,8 @@ pub fn extract_rar(
         current_file: "Completed".into(),
         percentage: 1.0,
         phase: Some("extract".into()),
-    });
+        ..Default::default()
+});
 
     Ok(OperationSummary {
         operation_id: operation_id.to_string(),

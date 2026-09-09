@@ -948,7 +948,8 @@ fn stream_rebuild(
                             current_file: out_path.clone(),
                             percentage: progress_percentage(processed, total_files),
                             phase: Some("rebuild".into()),
-                        });
+                            ..Default::default()
+});
                     }
                     let member_name = member_path_for_tar(out_path);
                     if *is_dir || entry.is_directory {
@@ -1003,7 +1004,8 @@ fn stream_rebuild(
                     current_file: current.clone(),
                     percentage: progress_percentage(processed, total_files),
                     phase: Some("rebuild".into()),
-                });
+                    ..Default::default()
+});
             }
             match member {
                 RebuildMember::NewDirectory { path } => {
@@ -1064,7 +1066,8 @@ fn stream_rebuild(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: Some("rebuild".into()),
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {

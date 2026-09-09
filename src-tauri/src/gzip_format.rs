@@ -201,7 +201,8 @@ pub fn extract_gzip(
         current_file: name.clone(),
         percentage: 0.0,
         phase: None,
-    });
+        ..Default::default()
+});
 
     // Resolve destination conflicts before decompressing (skip avoids full inflate).
     let dest = destination.join(&name);
@@ -347,7 +348,8 @@ pub fn extract_gzip(
                             current_file: name.clone(),
                             percentage: 50.0,
                             phase: None,
-                        });
+                            ..Default::default()
+});
                     }
                 }
                 writer.flush().map_err(|error| {
@@ -402,7 +404,8 @@ pub fn extract_gzip(
                         current_file: name.clone(),
                         percentage: 50.0,
                         phase: None,
-                    });
+                        ..Default::default()
+});
                 }
             }
             extracted = 1;
@@ -416,7 +419,8 @@ pub fn extract_gzip(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
-    });
+        ..Default::default()
+});
 
     Ok(OperationSummary {
         operation_id: operation_id.into(),

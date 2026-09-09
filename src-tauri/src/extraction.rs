@@ -352,6 +352,7 @@ fn extract_windows(
                         extracted_files as f32 * 100.0 / total_files as f32
                     },
                     phase: None,
+                    ..Default::default()
                 });
                 last_progress = Instant::now();
             }
@@ -536,7 +537,8 @@ fn extract_windows(
             current_file: "Completed".into(),
             percentage: 100.0,
             phase: None,
-        });
+            ..Default::default()
+});
         Ok(OperationSummary {
             operation_id: operation_id.into(),
             extracted_files,

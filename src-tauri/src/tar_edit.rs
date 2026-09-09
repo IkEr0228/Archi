@@ -1117,7 +1117,8 @@ fn process_entries_into<W: Write, R: Read>(
                         current_file: out_path.clone(),
                         percentage: progress_percentage(processed, total_files),
                         phase: Some("rebuild".into()),
-                    });
+                        ..Default::default()
+});
                 }
                 // Honor cancel set inside progress callback before writing.
                 if cancelled.load(Ordering::Relaxed) {
@@ -1157,7 +1158,8 @@ fn process_entries_into<W: Write, R: Read>(
                 current_file: current.clone(),
                 percentage: progress_percentage(processed, total_files),
                 phase: Some("rebuild".into()),
-            });
+                ..Default::default()
+});
         }
         match member {
             RebuildMember::NewDirectory { path } => {
@@ -1381,7 +1383,8 @@ fn stream_rebuild(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: Some("rebuild".into()),
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {

@@ -170,7 +170,8 @@ pub fn extract_xz(
         current_file: name.clone(),
         percentage: 0.0,
         phase: None,
-    });
+        ..Default::default()
+});
 
     // Conflict resolution before inflate so Skip avoids full decompress.
     let dest = destination.join(&name);
@@ -313,7 +314,8 @@ pub fn extract_xz(
                             current_file: name.clone(),
                             percentage: 50.0,
                             phase: None,
-                        });
+                            ..Default::default()
+});
                     }
                 }
                 writer.flush().map_err(|error| {
@@ -365,7 +367,8 @@ pub fn extract_xz(
                         current_file: name.clone(),
                         percentage: 50.0,
                         phase: None,
-                    });
+                        ..Default::default()
+});
                 }
             }
             extracted = 1;
@@ -379,7 +382,8 @@ pub fn extract_xz(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
-    });
+        ..Default::default()
+});
 
     Ok(OperationSummary {
         operation_id: operation_id.into(),

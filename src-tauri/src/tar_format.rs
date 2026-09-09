@@ -766,7 +766,8 @@ fn extract_tar_reader<R: Read>(
                     current_file: name.clone(),
                     percentage: 0.0,
                     phase: None,
-                });
+                    ..Default::default()
+});
             }
 
             if is_dir {
@@ -860,7 +861,8 @@ fn extract_tar_reader<R: Read>(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
-    });
+        ..Default::default()
+});
 
     Ok(OperationSummary {
         operation_id: operation_id.into(),

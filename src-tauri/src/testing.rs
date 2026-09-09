@@ -83,7 +83,8 @@ fn finish_summary(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
-    });
+        ..Default::default()
+});
     TestArchiveSummary {
         operation_id: operation_id.into(),
         total_entries: tested,
@@ -177,6 +178,7 @@ fn test_zip(
                     tested as f32 * 100.0 / progress_total as f32
                 },
                 phase: None,
+                ..Default::default()
             });
             last_progress = Instant::now();
         }
@@ -265,7 +267,8 @@ fn test_tar_reader<R: Read>(
                 current_file: name.clone(),
                 percentage: 0.0,
                 phase: None,
-            });
+                ..Default::default()
+});
             last_progress = Instant::now();
         }
         match drain_reader(&mut entry, cancelled) {
@@ -372,7 +375,8 @@ fn test_single_named(
         current_file: label.into(),
         percentage: 0.0,
         phase: None,
-    });
+        ..Default::default()
+});
     match drain_reader(&mut reader, cancelled) {
         Ok(()) => Ok(finish_summary(operation_id, 1, 1, 0, Vec::new(), emit)),
         Err(msg) if msg == "cancelled" => {
@@ -506,6 +510,7 @@ fn test_sevenz(
                     tested as f32 * 100.0 / total as f32
                 },
                 phase: None,
+                ..Default::default()
             });
             last = Instant::now();
         }

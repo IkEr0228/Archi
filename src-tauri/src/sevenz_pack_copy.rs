@@ -472,7 +472,8 @@ pub fn pack_stream_rebuild(
                     current_file: current.clone(),
                     percentage: progress_percentage(processed, total.max(1)),
                     phase: Some("pack_copy".into()),
-                });
+                    ..Default::default()
+});
             }
 
             match member {
@@ -613,7 +614,8 @@ pub fn pack_stream_rebuild(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: Some("pack_copy".into()),
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {

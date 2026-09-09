@@ -420,7 +420,8 @@ pub fn extract_sevenz(
                 current_file: normalized.clone(),
                 percentage: progress_percentage(processed, total_files),
                 phase: None,
-            });
+                ..Default::default()
+});
         }
 
         // `destination` is already canonical at extract entry.
@@ -523,7 +524,8 @@ pub fn extract_sevenz(
         current_file: "Completed".into(),
         percentage: 100.0,
         phase: None,
-    });
+        ..Default::default()
+});
 
     Ok(OperationSummary {
         operation_id: operation_id.into(),
@@ -830,7 +832,8 @@ pub fn create_sevenz_archive(
                     current_file: entry.archive_path.clone(),
                     percentage: progress_percentage(processed, total_files),
                     phase: None,
-                });
+                    ..Default::default()
+});
             }
             if entry.is_directory {
                 writer
@@ -897,7 +900,8 @@ pub fn create_sevenz_archive(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: None,
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {

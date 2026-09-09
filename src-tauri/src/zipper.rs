@@ -85,7 +85,8 @@ pub fn create_zip_archive(
                     current_file: entry.archive_path.clone(),
                     percentage: progress_percentage(processed_files, total_files),
                     phase: None,
-                });
+                    ..Default::default()
+});
             }
 
             let mut source = if entry.is_directory {
@@ -182,7 +183,8 @@ pub fn create_zip_archive(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: None,
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {

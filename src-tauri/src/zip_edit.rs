@@ -1081,7 +1081,8 @@ fn rebuild_archive(
                     current_file: current_file.clone(),
                     percentage: progress_percentage(processed, total_files),
                     phase: Some("rebuild".into()),
-                });
+                    ..Default::default()
+});
             }
 
             match member {
@@ -1181,7 +1182,8 @@ fn rebuild_archive(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: Some("rebuild".into()),
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {
@@ -1245,7 +1247,8 @@ fn append_to_archive(
                     current_file: current_file.clone(),
                     percentage: progress_percentage(processed, total_files),
                     phase: Some("append".into()),
-                });
+                    ..Default::default()
+});
             }
 
             match member {
@@ -1314,7 +1317,8 @@ fn append_to_archive(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: Some("append".into()),
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {
@@ -1372,7 +1376,8 @@ fn logical_delete_archive(
             current_file: "logical_delete".into(),
             percentage: 0.0,
             phase: Some("logical_delete".into()),
-        });
+            ..Default::default()
+});
 
         if cancelled.load(Ordering::Relaxed) {
             return Err(cancelled_error());
@@ -1429,7 +1434,8 @@ fn logical_delete_archive(
                 current_file: "Completed".into(),
                 percentage: 100.0,
                 phase: Some("logical_delete".into()),
-            });
+                ..Default::default()
+});
             Ok(summary)
         }
         Err(mut error) => {

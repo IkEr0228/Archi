@@ -20,6 +20,7 @@ pub mod rar_format;
 pub mod security;
 pub mod sevenz_edit;
 pub mod sevenz_format;
+pub mod stream_pipeline;
 /// Non-solid 7z pack-stream byte-copy (product path via `sevenz_edit::apply_planned`).
 pub mod sevenz_pack_copy;
 pub mod tar_create;

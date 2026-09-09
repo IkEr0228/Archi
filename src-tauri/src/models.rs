@@ -16,7 +16,7 @@ pub struct CommandError {
     pub path: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct OperationProgress {
     pub operation_id: String,
     pub extracted_files: u64,
@@ -26,6 +26,33 @@ pub struct OperationProgress {
     /// Optional edit/extract phase label: "plan" | "append" | "rebuild" | "extract" | "repack" | "finalize".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phase: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bytes_processed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed_bytes_per_sec: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u32>,
+}
+
+impl OperationProgress {
+    pub fn new(
+        operation_id: impl Into<String>,
+        extracted_files: u64,
+        total_files: u64,
+        current_file: impl Into<String>,
+        percentage: f32,
+    ) -> Self {
+        Self {
+            operation_id: operation_id.into(),
+            extracted_files,
+            total_files,
+            current_file: current_file.into(),
+            percentage,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
