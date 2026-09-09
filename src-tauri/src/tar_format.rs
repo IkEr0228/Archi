@@ -491,7 +491,7 @@ fn extract_one_file_windows(
     drop(output);
 
     let created_file = created
-        .get(created_index)
+        .get_mut(created_index)
         .ok_or_else(|| tar_error("write_failed", "Missing created temp file handle."))?;
     parent
         .rename_new_file(created_file, &wide)

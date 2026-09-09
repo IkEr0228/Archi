@@ -2,6 +2,7 @@
 
 use crate::conflict::unique_renamed_path;
 use crate::extraction::{validate_selection, ConflictResolver, SelectionIndex};
+use crate::io_perf::ProgressGate;
 use crate::models::{
     ArchiveCapabilities, ArchiveEntry, ArchiveInfo, ArchiveStats, CommandError, ConflictDecision,
     OperationProgress, OperationSummary,
@@ -286,6 +287,7 @@ pub fn extract_rar(
     let mut open_archive = archive.open_for_processing().map_err(map_unrar_error)?;
     let mut extracted_files = 0_u64;
     let mut skipped_files = 0_u64;
+    let mut progress_gate = ProgressGate::new();
 
     loop {
         if cancelled.load(Ordering::SeqCst) {
@@ -371,15 +373,26 @@ pub fn extract_rar(
         open_archive = cursor.extract_to(&write_target).map_err(map_unrar_error)?;
         extracted_files += 1;
 
-        emit(OperationProgress {
-            operation_id: operation_id.to_string(),
-            extracted_files,
-            total_files,
-            current_file: normalized,
-            percentage: (extracted_files as f32 / total_files as f32).min(1.0),
-            phase: Some("extract".into()),
-        });
+        if progress_gate.should_emit() {
+            emit(OperationProgress {
+                operation_id: operation_id.to_string(),
+                extracted_files,
+                total_files,
+                current_file: normalized,
+                percentage: (extracted_files as f32 / total_files as f32).min(1.0),
+                phase: Some("extract".into()),
+            });
+        }
     }
+
+    emit(OperationProgress {
+        operation_id: operation_id.to_string(),
+        extracted_files,
+        total_files,
+        current_file: "Completed".into(),
+        percentage: 1.0,
+        phase: Some("extract".into()),
+    });
 
     Ok(OperationSummary {
         operation_id: operation_id.to_string(),

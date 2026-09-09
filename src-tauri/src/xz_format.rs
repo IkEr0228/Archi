@@ -322,7 +322,7 @@ pub fn extract_xz(
             }
             drop(out);
             let created_file = created
-                .get(created_index)
+                .get_mut(created_index)
                 .ok_or_else(|| xz_error("write_failed", "Missing created temp file handle."))?;
             if let Err(error) = parent.rename_new_file(created_file, &wide) {
                 let _ = cleanup_windows_created(&mut created);

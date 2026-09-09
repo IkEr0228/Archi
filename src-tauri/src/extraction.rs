@@ -515,7 +515,7 @@ fn extract_windows(
                     })?;
                 }
                 drop(output);
-                let created_file = created.get(created_index).ok_or_else(|| {
+                let created_file = created.get_mut(created_index).ok_or_else(|| {
                     extraction_error("write_failed", "Temporary file tracking was unavailable.")
                 })?;
                 parent

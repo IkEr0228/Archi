@@ -88,8 +88,13 @@ pub struct Directory {
     ancestors: Vec<Arc<File>>,
 }
 
-pub struct CreatedEntry {
-    handle: Arc<File>,
+pub enum CreatedEntry {
+    Directory(Arc<File>),
+    InFlightFile(Arc<File>),
+    CompletedFile {
+        parent: Directory,
+        name: Vec<u16>,
+    },
 }
 
 /// Result of probing a leaf name under a directory handle without following reparse points.
@@ -281,13 +286,20 @@ impl Directory {
                 | FILE_OPEN_REPARSE_POINT
                 | FILE_SEQUENTIAL_ONLY,
         )?);
-        created.push(CreatedEntry {
-            handle: Arc::clone(&handle),
-        });
+        created.push(CreatedEntry::InFlightFile(Arc::clone(&handle)));
         Ok(handle)
     }
 
-    pub fn rename_new_file(&self, source: &CreatedEntry, destination: &[u16]) -> io::Result<()> {
+    pub fn rename_new_file(&self, source: &mut CreatedEntry, destination: &[u16]) -> io::Result<()> {
+        let raw_handle = match source {
+            CreatedEntry::InFlightFile(handle) => handle.as_raw_handle(),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Destination entry is not an in-flight file.",
+                ))
+            }
+        };
         let header_size = file_rename_name_offset();
         let name_size = destination.len().checked_mul(2).ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "Destination name is too long.")
@@ -318,7 +330,7 @@ impl Directory {
         };
         let result = unsafe {
             NtSetInformationFile(
-                source.handle.as_raw_handle(),
+                raw_handle,
                 &mut status,
                 bytes.as_mut_ptr().cast(),
                 bytes.len() as u32,
@@ -330,6 +342,14 @@ impl Directory {
                 "NtSetInformationFile failed with status {result:#x}"
             )));
         }
+
+        // Drop the open in-flight file handle immediately upon rename to avoid
+        // leaking kernel handles across tens of thousands of extracted files.
+        *source = CreatedEntry::CompletedFile {
+            parent: self.clone(),
+            name: destination.to_vec(),
+        };
+
         Ok(())
     }
 
@@ -452,9 +472,7 @@ impl Directory {
     }
 
     fn created_entry(&self) -> CreatedEntry {
-        CreatedEntry {
-            handle: Arc::clone(&self.current),
-        }
+        CreatedEntry::Directory(Arc::clone(&self.current))
     }
 }
 
@@ -469,10 +487,19 @@ fn file_rename_handle_offset() -> usize {
 pub fn cleanup_created(entries: &mut Vec<CreatedEntry>) -> Vec<String> {
     let mut failures = Vec::new();
     while let Some(entry) = entries.pop() {
-        if let Err(error) = mark_handle_for_delete(entry.handle.as_ref()) {
-            failures.push(error.to_string());
+        match entry {
+            CreatedEntry::Directory(handle) | CreatedEntry::InFlightFile(handle) => {
+                if let Err(error) = mark_handle_for_delete(handle.as_ref()) {
+                    failures.push(error.to_string());
+                }
+                drop(handle);
+            }
+            CreatedEntry::CompletedFile { parent, name } => {
+                if let Err(error) = parent.delete_file_by_name(&name) {
+                    failures.push(error.to_string());
+                }
+            }
         }
-        drop(entry);
     }
     failures
 }
