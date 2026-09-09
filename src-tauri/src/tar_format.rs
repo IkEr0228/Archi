@@ -27,7 +27,7 @@ use std::time::Instant;
 use tar::{Archive, EntryType};
 use xz2::read::XzDecoder;
 
-use crate::io_perf::{IO_BUFFER_SIZE as BUFFER_SIZE, PROGRESS_INTERVAL};
+use crate::io_perf::{IO_BUFFER_SIZE_LARGE as BUFFER_SIZE, PROGRESS_INTERVAL};
 
 fn tar_error(code: &str, message: impl Into<String>) -> CommandError {
     CommandError::new(code, message)
@@ -459,7 +459,7 @@ fn extract_one_file_windows(
         let _ = output.as_ref().set_len(expected_size);
     }
 
-    let mut buffer = [0_u8; BUFFER_SIZE];
+    let mut buffer = vec![0_u8; BUFFER_SIZE];
     {
         let mut writer = output.as_ref();
         loop {
@@ -549,7 +549,7 @@ fn extract_one_file_windows(
     if expected_size > 0 {
         let _ = file.set_len(expected_size);
     }
-    let mut buffer = [0_u8; BUFFER_SIZE];
+    let mut buffer = vec![0_u8; BUFFER_SIZE];
     loop {
         if cancelled.load(Ordering::Relaxed) {
             return Err(tar_error("cancelled", "Archive extraction was cancelled."));

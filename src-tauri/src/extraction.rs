@@ -24,7 +24,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 use zip::ZipArchive;
 
-use crate::io_perf::{IO_BUFFER_SIZE as BUFFER_SIZE, PROGRESS_INTERVAL};
+use crate::io_perf::{IO_BUFFER_SIZE_LARGE as BUFFER_SIZE, PROGRESS_INTERVAL};
 
 /// Check cancel during ZIP central-directory plan walk every this many entries.
 const PLAN_CANCEL_CHECK_INTERVAL: usize = 256;
@@ -334,6 +334,7 @@ fn extract_windows(
     let mut extracted_files = 0_u64;
     let mut skipped_files = 0_u64;
     let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
+    let mut buffer = vec![0_u8; BUFFER_SIZE];
     let result = (|| -> Result<OperationSummary, CommandError> {
         for plan in plans {
             if cancelled.load(Ordering::Relaxed) {
@@ -473,7 +474,6 @@ fn extract_windows(
                 if entry_size > 0 {
                     let _ = output.as_ref().set_len(entry_size);
                 }
-                let mut buffer = [0; BUFFER_SIZE];
                 {
                     let mut writer = output.as_ref();
                     loop {

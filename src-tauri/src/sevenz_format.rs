@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use crate::io_perf::IO_BUFFER_SIZE as BUFFER_SIZE;
+use crate::io_perf::IO_BUFFER_SIZE_LARGE as BUFFER_SIZE;
 
 fn sz_cb_err(msg: impl Into<String>) -> sevenz_rust2::Error {
     sevenz_rust2::Error::Other(msg.into().into())
@@ -359,6 +359,7 @@ pub fn extract_sevenz(
     let mut skipped = 0_u64;
     let mut processed = 0_u64;
     let mut last = Instant::now();
+    let mut io_buffer = vec![0_u8; BUFFER_SIZE];
 
     #[cfg(windows)]
     let mut created = Vec::new();
@@ -398,12 +399,11 @@ pub fn extract_sevenz(
 
         if !include {
             // Drain stream for solid archives so later members can decode.
-            let mut sink = [0_u8; BUFFER_SIZE];
             loop {
                 if cancelled.load(Ordering::Relaxed) {
                     return Err(sz_cb_err("cancelled"));
                 }
-                match data.read(&mut sink) {
+                match data.read(&mut io_buffer) {
                     Ok(0) => break,
                     Ok(_) => {}
                     Err(e) => return Err(e.into()),
@@ -459,6 +459,7 @@ pub fn extract_sevenz(
             conflict_resolver,
             &mut created,
             &mut dir_cache,
+            &mut io_buffer,
         );
         #[cfg(not(windows))]
         let write_result = write_extracted_file(
@@ -472,6 +473,7 @@ pub fn extract_sevenz(
             conflict_resolver,
             &mut created,
             &mut dir_cache,
+            &mut io_buffer,
         );
         match write_result {
             Ok(true) => extracted = extracted.saturating_add(1),
@@ -554,6 +556,7 @@ fn write_extracted_file(
     conflict_resolver: &dyn ConflictResolver,
     created: &mut Vec<crate::windows_fs::CreatedEntry>,
     dir_cache: &mut AHashMap<PathBuf, Directory>,
+    buffer: &mut [u8],
 ) -> Result<bool, CommandError> {
     use std::os::windows::ffi::OsStrExt;
 
@@ -643,7 +646,6 @@ fn write_extracted_file(
     if expected_size > 0 {
         let _ = output.as_ref().set_len(expected_size);
     }
-    let mut buffer = [0_u8; BUFFER_SIZE];
     {
         let mut writer = output.as_ref();
         loop {
@@ -652,7 +654,7 @@ fn write_extracted_file(
                 let _ = cleanup_windows_created(created);
                 return Err(sz_error("cancelled", "Archive extraction was cancelled."));
             }
-            let n = reader.read(&mut buffer).map_err(|error| {
+            let n = reader.read(buffer).map_err(|error| {
                 sz_error("invalid_archive", format!("Cannot read 7z member: {error}"))
             })?;
             if n == 0 {
@@ -696,6 +698,7 @@ fn write_extracted_file(
     conflict_resolver: &dyn ConflictResolver,
     _created: &mut Vec<()>,
     _dir_cache: &mut AHashMap<PathBuf, ()>,
+    buffer: &mut [u8],
 ) -> Result<bool, CommandError> {
     let mut write_to = destination.to_path_buf();
     if write_to.exists() {
@@ -728,13 +731,12 @@ fn write_extracted_file(
     if expected_size > 0 {
         let _ = file.set_len(expected_size);
     }
-    let mut buffer = [0_u8; BUFFER_SIZE];
     loop {
         if cancelled.load(Ordering::Relaxed) {
             return Err(sz_error("cancelled", "Archive extraction was cancelled."));
         }
         let n = reader
-            .read(&mut buffer)
+            .read(buffer)
             .map_err(|e| sz_error("invalid_archive", format!("Cannot read: {e}")))?;
         if n == 0 {
             break;
