@@ -1,8 +1,41 @@
+# ⚠️ PROJECT ABANDONED / ПРОЕКТ ЗАБРОШЕН ⚠️
+
+> [!CAUTION]
+> # 🛑 NOTICE: PROJECT IS ABANDONED & UNMAINTAINED (USE AT YOUR OWN RISK)
+>
+> ### 🇬🇧 OFFICIAL NOTICE: PROJECT ABANDONED
+>
+> **I was unable to handle the complexity of this project.**
+>
+> Development of **Archi** has been officially and permanently suspended. The project is marked as **ABANDONED / UNMAINTAINED**.
+>
+> - **Why development was halted:** I overestimated my capabilities and encountered technical roadblocks and system-level challenges (deep Windows shell integration, registry file associations, native low-level archive internals) that exceeded my current experience. I simply **could not cope with the work**.
+> - **Future outlook:** I might return to this project in the future when I have accumulated significantly more experience and expertise in systems engineering. However, for the foreseeable future, no updates, bug fixes, or support will be provided.
+> - **DOWNLOAD & USE STRICTLY AT YOUR OWN RISK:**  
+>   Existing builds and source files may contain critical bugs, cause unstable file system operations, disrupt Windows registry file associations, or crash. **Download and run binaries from this repository entirely at your own risk.** The developer assumes no liability for damaged files, system instability, or data loss.
+>
+> ---
+>
+> ### 🇷🇺 ОФИЦИАЛЬНОЕ ЗАЯВЛЕНИЕ РАЗРАБОТЧИКА
+>
+> **Я не справился с этой работой.**
+>
+> Разработка проекта **Archi** полностью остановлена. Проект официально признан **заброшенным (ABANDONED / UNMAINTAINED)**.
+>
+> - **Причина остановки:** Я переоценил свои силы и столкнулся с задачами и системными сложностями (интеграция с Windows, ассоциации файлов, низкоуровневая работа с архивами), к которым на текущем этапе оказался не готов. Я просто **не справился с работой**.
+> - **Планы на будущее:** Возможно, я когда-нибудь вернусь к этому проекту позже, когда накоплю гораздо больше знаний, навыков и опыта в системной разработке. Но в обозримом будущем никаких обновлений, исправлений ошибок или поддержки не планируется.
+> - **СКАЧИВАНИЕ И ИСПОЛЬЗОВАНИЕ — ИСКЛЮЧИТЕЛЬНО НА ВАШ СТРАХ И РИСК:**  
+>   Текущие версии программы могут содержать критические ошибки, нестабильный код, вызывать проблемы с ассоциациями файлов в реестре Windows или приводить к сбоям. **Скачивайте и используйте любые файлы из этого репозитория на свой собственный страх и риск.** Разработчик не несёт никакой ответственности за испорченные файлы, сбои операционной системы или потерю данных.
+
+---
+
 # Archi
 
 <div align="center">
 
-**A modern, blazing-fast, and secure archive manager crafted for Windows.**  
+[![Project Status: Abandoned](https://img.shields.io/badge/Status-Abandoned%20%2F%20Unmaintained-red?style=for-the-badge)](README.md)
+
+**A modern archive manager for Windows (UNMAINTAINED ARCHIVE).**  
 Open, browse, extract, create, and edit archives with effortless multi-window multitasking and native Drag & Drop.
 
 [![Latest Release](https://img.shields.io/github/v/release/IkEr0228/Archi?style=flat-square&color=38bdf8)](https://github.com/IkEr0228/Archi/releases/latest)
@@ -32,6 +65,11 @@ Get the latest version of Archi for **Windows 10 / 11 (64-bit)**:
 | :--- | :--- | :--- |
 | **Installer** *(Recommended)* | [**`archi_0.4.0_x64-setup.exe`**](https://github.com/IkEr0228/Archi/releases/latest) | Complete setup with Start Menu shortcuts and uninstaller. |
 | **Portable** | [**`archi.exe`**](https://github.com/IkEr0228/Archi/releases/latest) | Standalone single-file binary. No installation required — run it from anywhere! |
+
+> [!WARNING]
+> **USE AT YOUR OWN RISK / СКАЧИВАЙТЕ НА СВОЙ СТРАХ И РИСК**  
+> This project is discontinued and no longer maintained. Builds are provided "AS IS" without any warranties. If you need a reliable archive manager, please use established alternatives such as PeaZip or 7-Zip.  
+> *Проект закрыт и больше не обновляется. Сборки предоставляются «как есть» без каких-либо гарантий. Если вам нужен стабильный архиватор, рекомендуем использовать PeaZip или 7-Zip.*
 
 > [!TIP]
 > **Windows SmartScreen note:** Since Archi is a free, open-source project without an expensive code-signing certificate, Windows SmartScreen may show a prompt on first run. Simply click **More info** → **Run anyway**.

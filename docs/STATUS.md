@@ -1,8 +1,13 @@
 # Archi development status
 
-**Last updated:** 2026-09-06  
+> [!CAUTION]
+> **PROJECT STATUS: ABANDONED / UNMAINTAINED**  
+> Проект закрыт и заморожен. Разработка и поддержка прекращены. Скачивание и использование исключительно на свой страх и риск.
+
+**Status:** 🛑 **Abandoned**  
+**Last updated:** 2026-09-11  
 **Branch:** `master`  
-**Latest release:** **v0.4.0**  
+**Latest release:** **v0.4.0** (Final / Unmaintained)  
 **License:** MIT (see root `LICENSE`)  
 **Repository:** https://github.com/IkEr0228/Archi
 
