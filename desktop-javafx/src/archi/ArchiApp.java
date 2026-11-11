@@ -79,15 +79,18 @@ public final class ArchiApp extends Application {
 
     private Node titlebar() {
         Label brand = new Label("• Archi // archive_manager"); brand.getStyleClass().add("brand");
-        opened.getStyleClass().add("opened"); loaded.getStyleClass().add("badge");
+        brand.setAccessibleText("Archi archive manager");
+        opened.getStyleClass().add("opened"); opened.setAccessibleText("Opened archive");
+        loaded.getStyleClass().add("badge"); loaded.setAccessibleText("Archive loading status");
         Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         Button min = windowButton("Minimize", "min", () -> stage.setIconified(true));
         Button max = windowButton("Maximize / restore", "max", () -> stage.setMaximized(!stage.isMaximized()));
         Button close = windowButton("Close", "close", this::confirmClose);
         HBox bar = new HBox(13, brand, new Label("│"), opened, loaded, spacer, min, max, close);
-        bar.getStyleClass().add("titlebar");
+        bar.getStyleClass().add("titlebar"); bar.setAccessibleRole(AccessibleRole.TOOL_BAR); bar.setAccessibleText("Window controls");
         bar.setOnMousePressed(e -> { if (!(e.getTarget() instanceof Button)) { dragX = e.getScreenX() - stage.getX(); dragY = e.getScreenY() - stage.getY(); } });
         bar.setOnMouseDragged(e -> { if (e.isPrimaryButtonDown() && !stage.isMaximized()) { stage.setX(e.getScreenX() - dragX); stage.setY(e.getScreenY() - dragY); } });
+        bar.setOnMouseReleased(e -> { if (!(e.getTarget() instanceof Button)) snapWindow(e.getScreenX(), e.getScreenY()); });
         bar.setOnMouseClicked(e -> { if (e.getClickCount() == 2 && !(e.getTarget() instanceof Button)) stage.setMaximized(!stage.isMaximized()); });
         return bar;
     }
@@ -130,6 +133,7 @@ public final class ArchiApp extends Application {
 
     private Node archiveTable() {
         table.setFixedCellSize(35);
+        table.setAccessibleRole(AccessibleRole.TABLE_VIEW); table.setAccessibleText("Archive entries");
         table.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         table.setPlaceholder(new Label("No archive loaded\n\nOpen an archive or drop a file here."));
@@ -180,6 +184,7 @@ public final class ArchiApp extends Application {
 
     private Node statusbar() {
         Label prompt = new Label("archi@client:/archive$"); prompt.getStyleClass().add("prompt");
+        prompt.setAccessibleText("Application status prompt"); totals.setAccessibleText("Archive totals"); status.setAccessibleText("Operation status");
         Region space = new Region(); HBox.setHgrow(space, Priority.ALWAYS);
         progress.setPrefWidth(95); progress.setVisible(false); progress.managedProperty().bind(progress.visibleProperty());
         cancel.setVisible(false); cancel.managedProperty().bind(cancel.visibleProperty());
@@ -677,9 +682,24 @@ public final class ArchiApp extends Application {
         scene.addEventFilter(MouseEvent.MOUSE_RELEASED, e -> { if (active[0] != null) { active[0] = null; scene.setCursor(Cursor.DEFAULT); e.consume(); } });
         scene.addEventFilter(MouseEvent.MOUSE_EXITED, e -> { if (active[0] == null) scene.setCursor(Cursor.DEFAULT); });
     }
-    private static Button button(String text, Runnable action) { Button b = new Button(text); b.setOnAction(e -> action.run()); return b; }
+    private void snapWindow(double screenX, double screenY) {
+        if (stage.isMaximized()) return;
+        var screens = Screen.getScreensForRectangle(screenX, screenY, 1, 1);
+        if (screens.isEmpty()) return;
+        var bounds = screens.getFirst().getVisualBounds();
+        final double threshold = 12;
+        if (screenY <= bounds.getMinY() + threshold) {
+            stage.setMaximized(true);
+        } else if (screenX <= bounds.getMinX() + threshold || screenX >= bounds.getMaxX() - threshold) {
+            stage.setMaximized(false);
+            double width = bounds.getWidth() / 2;
+            stage.setX(screenX <= bounds.getMinX() + threshold ? bounds.getMinX() : bounds.getMinX() + width);
+            stage.setY(bounds.getMinY()); stage.setWidth(width); stage.setHeight(bounds.getHeight());
+        }
+    }
+    private static Button button(String text, Runnable action) { Button b = new Button(text); b.setAccessibleRole(AccessibleRole.BUTTON); b.setAccessibleText(text); b.setOnAction(e -> action.run()); return b; }
     private static Button action(String text, Runnable action) { return button(text, action); }
-    private static Button unavailable(String text) { Button b = new Button(text); b.setDisable(true); b.setTooltip(new Tooltip("Not migrated yet")); return b; }
+    private static Button unavailable(String text) { Button b = button(text, () -> {}); b.setDisable(true); b.setTooltip(new Tooltip("Not migrated yet")); return b; }
     private static Button windowButton(String description, String style, Runnable action) { var b = button("", action); b.setAccessibleText(description); b.setTooltip(new Tooltip(description)); b.getStyleClass().addAll("window-button", style); return b; }
     private void setSecret(String value) {
         if (secret != null) java.util.Arrays.fill(secret, '\0');

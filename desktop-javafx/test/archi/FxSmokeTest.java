@@ -77,6 +77,17 @@ public final class FxSmokeTest {
             || !scene.lookup("#create-sources .scroll-bar:horizontal").isVisible();
         scroll.setVvalue(0); scene.getRoot().layout();
     }
+    private static void assertParityHooks() {
+        var scene = stage().getScene();
+        Node table = scene.lookup(".table-view");
+        assert table.getAccessibleRole() == javafx.scene.AccessibleRole.TABLE_VIEW;
+        assert table.getAccessibleText().equals("Archive entries");
+        assert scene.getRoot().getOnDragOver() != null : "Missing archive drag-over handler";
+        assert scene.getRoot().getOnDragDropped() != null : "Missing archive drop handler";
+        assert scene.lookup(".titlebar").getAccessibleRole() == javafx.scene.AccessibleRole.TOOL_BAR;
+        assert scene.getRoot().lookupAll(".window-button").stream()
+            .anyMatch(n -> n instanceof Button b && "Close".equals(b.getAccessibleText()));
+    }
     private static void await(Supplier<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (!fx(condition)) { if (System.nanoTime() > deadline) throw new AssertionError("JavaFX state timeout"); Thread.sleep(50); }
@@ -129,6 +140,7 @@ public final class FxSmokeTest {
                 }
                 await(() -> ((TableView<?>)stage().getScene().lookup(".table-view")).getItems().size() == 4);
                 fx(() -> { assertResize(); return true; });
+                fx(() -> { assertParityHooks(); return true; });
                 screenshot("smoke-open.png");
                 fx(() -> { ((TextField)stage().getScene().lookup(".filters .text-field")).setText("client.log"); return true; });
                 await(() -> ((TableView<?>)stage().getScene().lookup(".table-view")).getItems().size() == 1);
@@ -265,7 +277,8 @@ public final class FxSmokeTest {
             } catch (Throwable e) { verdict.completeExceptionally(e); }
             finally { Platform.runLater(Platform::exit); }
         });
-        Application.launch(ArchiApp.class, encrypted ? args[0] : archive.toString());
+        System.setProperty("archi.path", encrypted ? args[0] : archive.toString());
+        Application.launch(ArchiApp.class, args);
         try { verdict.get(30, TimeUnit.SECONDS); System.out.println(encrypted ? "JavaFX RAR password/focus/retry smoke assertions passed." : "JavaFX layout/resize/create/edit/encryption smoke assertions passed."); }
         finally {
             Files.deleteIfExists(archive);
