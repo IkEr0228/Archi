@@ -29,7 +29,10 @@ Installed Java is not required. Existing output is never removed; use
 `-Destination 'dist-release/javafx-next'` for another build. `-SkipBuild` reuses
 compiled classes/release worker. `-Verify` opens a fixture from an unrelated working
 directory, checks the bundled worker and closes the application without orphans.
-This is an app image, not an installer; signing and shell registration remain pending.
+This is an app image. `-Installer` also copies `install.ps1`, which installs the app
+image per-user and registers archive associations plus Explorer “Extract here”
+commands under HKCU. `install.ps1 -Uninstall -Package <package>` removes those
+entries and (unless `-KeepFiles` is used) the installed app. Signing remains pending.
 
 ## Verify
 
@@ -74,8 +77,7 @@ automation or pixel-perfect visual acceptance.
 
 ## Not migrated / known limits
 
-Shell associations, multiwindow, cross-window/external drag-out,
-native snap, installer and full accessibility parity
+Multiwindow, cross-window/external drag-out, native snap and full accessibility parity
 are not complete. Unavailable toolbar actions are disabled.
 Existing public README/release status was not rewritten.
 

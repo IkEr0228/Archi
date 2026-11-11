@@ -9,6 +9,14 @@ public final class Launcher {
                 if (java.nio.file.Files.isRegularFile(worker)) System.setProperty("archi.worker", worker.toString());
             } catch (java.net.URISyntaxException e) { throw new IllegalStateException("Cannot locate application files", e); }
         }
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("--extract-here") && i + 1 < args.length) {
+                System.setProperty("archi.action", args[i].substring(2));
+                System.setProperty("archi.path", args[++i]);
+            } else if (!args[i].startsWith("--") && System.getProperty("archi.path") == null) {
+                System.setProperty("archi.path", args[i]);
+            }
+        }
         javafx.application.Application.launch(ArchiApp.class, args);
     }
 }

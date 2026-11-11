@@ -1,4 +1,4 @@
-param([string]$Destination = '', [switch]$SkipBuild, [switch]$Verify)
+param([string]$Destination = '', [switch]$SkipBuild, [switch]$Verify, [switch]$Installer)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 if (!$Destination) { $Destination = Join-Path $root 'dist-release/javafx' }
@@ -34,5 +34,12 @@ if ($LASTEXITCODE) { throw 'Java runtime creation failed' }
 & "$java/jpackage.exe" --type app-image --name Archi --app-version 0.5.0 --vendor Archi --input $input --main-jar archi.jar --main-class archi.Launcher --runtime-image $runtime --java-options '--add-modules=javafx.controls' --dest $Destination
 if ($LASTEXITCODE) { throw 'Application image creation failed' }
 Write-Host "Portable application: $Destination/Archi/Archi.exe"
-Write-Host 'Java runtime included. Installer and shell associations are not configured.'
+Write-Host 'Java runtime included.'
+if ($Installer) {
+    $installerDir = Join-Path $Destination 'installer'
+    New-Item -ItemType Directory -Force $installerDir | Out-Null
+    Copy-Item "$PSScriptRoot/install.ps1" $installerDir -Force
+    Write-Host "Installer script: $installerDir/install.ps1"
+    Write-Host 'Run install.ps1 -Package <Archi directory> to install and register current-user associations.'
+}
 if ($Verify) { & "$PSScriptRoot/test/package-smoke.ps1" -Application (Join-Path $Destination 'Archi/Archi.exe') }

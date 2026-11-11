@@ -37,6 +37,7 @@ public final class ArchiApp extends Application {
     private final AtomicLong queryRevision = new AtomicLong();
     private ArchiveModel archive;
     private String parent = "/", secret, operation;
+    private String startupAction, startupPath;
     private boolean busy, closed, riskAcknowledged;
     private long sessionRevision;
     private Future<?> queryTask;
@@ -63,13 +64,14 @@ public final class ArchiApp extends Application {
         stage.setOnCloseRequest(e -> { if (busy) { e.consume(); confirmClose(); } });
         stage.show();
         controls();
+        startupAction = System.getProperty("archi.action");
+        startupPath = System.getProperty("archi.path");
         try {
             worker = new WorkerClient(Path.of(System.getProperty("archi.worker", "target/debug/archi-worker.exe")));
             worker.request("hello", new JsonObject()).result().whenComplete((hello, error) -> Platform.runLater(() -> {
                 if (error != null) { showError(error); return; }
                 controls();
-                var args = getParameters().getRaw();
-                if (!args.isEmpty() && !args.getFirst().isBlank()) open(args.getFirst(), null, false);
+                if (startupPath != null && !startupPath.isBlank()) open(startupPath, null, false);
             }));
         } catch (Exception e) { showError(e); }
     }
@@ -218,6 +220,14 @@ public final class ArchiApp extends Application {
             opened.setText("Open: " + Path.of(path).getFileName());
             loaded.setText("LOADED " + model.entries.size() + " ENTRIES.");
             crumbs(); query(); controls(); updateTotals();
+            if (startupAction != null) {
+                String action = startupAction;
+                startupAction = null;
+                Path destination = Path.of(path).toAbsolutePath().getParent();
+                if (destination != null && action.equals("extract-here")) {
+                    Platform.runLater(() -> extractTo(destination));
+                }
+            }
         }));
     }
 
@@ -262,11 +272,22 @@ public final class ArchiApp extends Application {
             DirectoryChooser chooser = new DirectoryChooser(); chooser.setTitle("Extract archive to...");
             var destination = chooser.showDialog(stage);
             if (destination == null) return;
-            var args = archiveArgs(); args.addProperty("destination", destination.getAbsolutePath());
+            extractTo(destination.toPath());
+        };
+        confirmExtract(choose);
+    }
+
+    private void extractTo(Path destination) {
+        if (archive == null || busy || destination == null) return;
+        confirmExtract(() -> {
+            var args = archiveArgs(); args.addProperty("destination", destination.toAbsolutePath().toString());
             var selection = new JsonArray(); table.getSelectionModel().getSelectedItems().forEach(e -> selection.add(e.path()));
             if (!selection.isEmpty()) args.add("selected_paths", selection);
             runOperation("extract", args, null);
-        };
+        });
+    }
+
+    private void confirmExtract(Runnable choose) {
         var warnings = archive.metadata.getAsJsonArray("warnings");
         var risks = new ArrayList<String>();
         for (var w : warnings) {
