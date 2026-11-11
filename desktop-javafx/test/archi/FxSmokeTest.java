@@ -87,6 +87,8 @@ public final class FxSmokeTest {
         assert scene.lookup(".titlebar").getAccessibleRole() == javafx.scene.AccessibleRole.TOOL_BAR;
         assert scene.getRoot().lookupAll(".window-button").stream()
             .anyMatch(n -> n instanceof Button b && "Close".equals(b.getAccessibleText()));
+        assert scene.getRoot().lookupAll(".button").stream()
+            .anyMatch(n -> n instanceof Button b && "New Window".equals(b.getText()));
     }
     private static void await(Supplier<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);

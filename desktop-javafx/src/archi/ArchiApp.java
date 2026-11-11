@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 public final class ArchiApp extends Application {
+    private static final Set<ArchiApp> WINDOWS = ConcurrentHashMap.newKeySet();
     private Stage stage;
     private WorkerClient worker;
     private final BorderPane content = new BorderPane();
@@ -39,7 +40,7 @@ public final class ArchiApp extends Application {
     private String parent = "/", operation;
     private char[] secret;
     private String startupAction, startupPath;
-    private boolean busy, closed, riskAcknowledged;
+    private boolean busy, dragPreparing, closed, riskAcknowledged;
     private long sessionRevision;
     private Future<?> queryTask;
     private StackPane modal;
@@ -50,6 +51,7 @@ public final class ArchiApp extends Application {
 
     @Override public void start(Stage primary) {
         stage = primary;
+        WINDOWS.add(this);
         stage.initStyle(StageStyle.UNDECORATED);
         stage.setTitle("Archi // archive_manager");
         content.getStyleClass().add("shell");
@@ -62,7 +64,7 @@ public final class ArchiApp extends Application {
         stage.setScene(scene);
         stage.setMinWidth(720); stage.setMinHeight(480);
         installResize(scene);
-        stage.setOnCloseRequest(e -> { if (busy) { e.consume(); confirmClose(); } });
+        stage.setOnCloseRequest(e -> { e.consume(); confirmClose(); });
         stage.show();
         controls();
         startupAction = System.getProperty("archi.action");
@@ -103,10 +105,10 @@ public final class ArchiApp extends Application {
         Button add = button("Add", this::addDialog), folder = button("New Folder", this::folderDialog), compact = button("Compact", this::compactDialog);
         editControls.addAll(List.of(add, folder, rename, move, delete, replace, compact));
         strategy.setValue("Auto"); strategy.setAccessibleText("Archive edit strategy");
-        actions.getChildren().addAll(button("Open", this::chooseArchive), create, extract, test,
+        actions.getChildren().addAll(button("Open", this::chooseArchive), button("New Window", this::newWindow), create, extract, test,
             button("Properties", this::properties), add, folder, rename,
             move, delete, replace, compact, new Label("EDIT"), strategy, unavailable("Associations"));
-        archiveControls.addAll(List.of(extract, test, (Control)actions.getChildren().get(4)));
+        archiveControls.addAll(List.of(extract, test, (Control)actions.getChildren().get(5)));
         actions.getStyleClass().add("toolbar");
         return actions;
     }
@@ -159,7 +161,9 @@ public final class ArchiApp extends Application {
             row.setOnMouseClicked(e -> { if (e.getClickCount() == 2 && !row.isEmpty() && row.getItem().directory()) navigate(row.getItem().path()); });
             return row;
         });
-        table.getSelectionModel().getSelectedItems().addListener((javafx.collections.ListChangeListener<ArchiveModel.Entry>)c -> { updateTotals(); controls(); });
+        table.getSelectionModel().getSelectedItems().addListener((javafx.collections.ListChangeListener<ArchiveModel.Entry>)c -> { updateTotals(); controls(); queueDragPreparation(); });
+        table.setOnDragDetected(this::startDragOut);
+        table.setOnDragDone(e -> scheduleDragCleanup());
         root.setOnDragOver(e -> { if (!busy && modal == null && e.getDragboard().hasFiles()) e.acceptTransferModes(TransferMode.COPY); e.consume(); });
         root.setOnDragDropped(e -> {
             boolean accepted = !busy && modal == null && e.getDragboard().hasFiles();
@@ -257,6 +261,85 @@ public final class ArchiApp extends Application {
                 table.setPlaceholder(new Label("No matching entries.")); updateTotals();
             });
         });
+    }
+
+    private void newWindow() {
+        try { new ArchiApp().start(new Stage()); }
+        catch (Exception e) { showError(e); }
+    }
+
+    private long dragRevision;
+    private WorkerClient.Call dragCall;
+    private Path dragDirectory;
+    private List<java.io.File> dragFiles = List.of();
+
+    private void queueDragPreparation() {
+        final long revision = ++dragRevision;
+        cancelDragRequest();
+        if (busy || dragPreparing || modal != null || archive == null || worker == null || table.getSelectionModel().isEmpty()) {
+            clearDragFiles();
+            return;
+        }
+        CompletableFuture.delayedExecutor(700, TimeUnit.MILLISECONDS).execute(() -> Platform.runLater(() -> {
+            if (revision != dragRevision || busy || dragPreparing || modal != null || archive == null || table.getSelectionModel().isEmpty()) return;
+            prepareDragOut(revision);
+        }));
+    }
+
+    private void prepareDragOut(long revision) {
+        final Path destination;
+        try { destination = Files.createTempDirectory("archi-drag-"); }
+        catch (Exception ignored) { return; }
+        var args = archiveArgs(); args.addProperty("destination", destination.toAbsolutePath().toString());
+        var paths = new JsonArray(); table.getSelectionModel().getSelectedItems().forEach(entry -> paths.add(entry.path()));
+        args.add("selected_paths", paths); dragDirectory = destination; dragPreparing = true; controls();
+        dragCall = worker.request("extract", args);
+        dragCall.result().whenComplete((result, error) -> Platform.runLater(() -> {
+            if (revision != dragRevision) { deleteDragDirectory(destination); return; }
+            if (error != null) {
+                deleteDragDirectory(destination); dragCall = null; dragPreparing = false; controls();
+                if (passwordError(error)) passwordDialog(archive.path, "Archive is password-protected", null, (password, remember) -> {
+                    setSecret(remember ? password : null); queueDragPreparation();
+                });
+                else if (!errorCode(error).equals("cancelled")) showError(error);
+                return;
+            }
+            try (var stream = Files.list(destination)) { dragFiles = stream.map(Path::toFile).toList(); }
+            catch (Exception ignored) { deleteDragDirectory(destination); dragDirectory = null; dragFiles = List.of(); }
+            dragCall = null; dragPreparing = false; controls();
+            CompletableFuture.delayedExecutor(30, TimeUnit.SECONDS).execute(() -> Platform.runLater(() -> {
+                if (revision == dragRevision) clearDragFiles();
+            }));
+        }));
+    }
+
+    private void startDragOut(MouseEvent event) {
+        if (dragFiles.isEmpty() || busy || modal != null) return;
+        Dragboard board = table.startDragAndDrop(TransferMode.COPY);
+        ClipboardContent content = new ClipboardContent(); content.putFiles(dragFiles); board.setContent(content);
+        event.consume();
+    }
+
+    private void scheduleDragCleanup() {
+        CompletableFuture.delayedExecutor(5, TimeUnit.SECONDS).execute(() -> Platform.runLater(this::clearDragFiles));
+    }
+
+    private void cancelDragRequest() {
+        if (dragCall == null || worker == null) return;
+        var args = new JsonObject(); args.addProperty("operation_id", dragCall.id());
+        worker.request("cancel", args); dragCall = null; dragPreparing = false; controls();
+    }
+
+    private void clearDragFiles() {
+        cancelDragRequest();
+        if (dragDirectory != null) deleteDragDirectory(dragDirectory);
+        dragDirectory = null; dragFiles = List.of(); dragPreparing = false; controls();
+    }
+
+    private static void deleteDragDirectory(Path directory) {
+        try (var paths = Files.walk(directory)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> { try { Files.deleteIfExists(path); } catch (Exception ignored) {} });
+        } catch (Exception ignored) {}
     }
 
     private void navigate(String path) { if (busy) return; parent = ArchiveModel.normalizeParent(path); search.clear(); extension.clear(); type.setValue("All"); table.getSelectionModel().clearSelection(); crumbs(); query(); }
@@ -376,24 +459,24 @@ public final class ArchiApp extends Application {
         progress.setVisible(value); cancel.setVisible(value); progress.setProgress(-1); status.setText(message); controls();
     }
     private void controls() {
-        if (create != null) create.setDisable(busy || worker == null);
-        archiveControls.forEach(c -> c.setDisable(busy || archive == null));
+        if (create != null) create.setDisable(busy || dragPreparing || worker == null);
+        archiveControls.forEach(c -> c.setDisable(busy || dragPreparing || archive == null));
         boolean editable = archive != null && archive.metadata.getAsJsonObject("capabilities").get("edit").getAsBoolean()
             && !(ArchiveModel.string(archive.metadata, "format", "").equals("zip") && archive.metadata.getAsJsonArray("warnings").asList().stream().anyMatch(w -> ArchiveModel.string(w.getAsJsonObject(), "code", "").equals("encrypted")));
-        editControls.forEach(c -> c.setDisable(busy || !editable));
-        strategy.setDisable(busy || !editable);
+        editControls.forEach(c -> c.setDisable(busy || dragPreparing || !editable));
+        strategy.setDisable(busy || dragPreparing || !editable);
         int selected = table.getSelectionModel().getSelectedItems().size();
         if (rename != null) {
-            rename.setDisable(busy || !editable || selected != 1);
-            delete.setDisable(busy || !editable || selected == 0);
-            move.setDisable(busy || !editable || selected == 0);
+            rename.setDisable(busy || dragPreparing || !editable || selected != 1);
+            delete.setDisable(busy || dragPreparing || !editable || selected == 0);
+            move.setDisable(busy || dragPreparing || !editable || selected == 0);
             var entry = table.getSelectionModel().getSelectedItem();
-            replace.setDisable(busy || !editable || selected != 1 || entry == null || entry.directory());
+            replace.setDisable(busy || dragPreparing || !editable || selected != 1 || entry == null || entry.directory());
         }
         if (archive != null) {
             var cap = archive.metadata.getAsJsonObject("capabilities");
-            extract.setDisable(busy || !cap.get("extract").getAsBoolean());
-            test.setDisable(busy || !cap.get("test").getAsBoolean());
+            extract.setDisable(busy || dragPreparing || !cap.get("extract").getAsBoolean());
+            test.setDisable(busy || dragPreparing || !cap.get("test").getAsBoolean());
         }
     }
     private void updateTotals() {
@@ -624,8 +707,14 @@ public final class ArchiApp extends Application {
     private static String capitalize(String s) { return Character.toUpperCase(s.charAt(0)) + s.substring(1); }
 
     private void confirmClose() {
-        if (busy) showModal("Close Archi?", "Active operation will be cancelled.", List.of(action("Keep working", this::dismiss), action("Cancel & close", () -> { cancel(); stage.hide(); Platform.exit(); })), null);
-        else { stage.hide(); Platform.exit(); }
+        if (busy || dragPreparing) showModal("Close Archi?", "Active operation will be cancelled.", List.of(action("Keep working", this::dismiss), action("Cancel & close", () -> { cancel(); closeWindow(); })), null);
+        else closeWindow();
+    }
+    private void closeWindow() {
+        if (closed) return;
+        closed = true; clearDragFiles(); setSecret(null); queries.shutdownNow(); if (worker != null) worker.close();
+        WINDOWS.remove(this); stage.close();
+        if (WINDOWS.isEmpty()) Platform.exit();
     }
     private void key(KeyEvent e) {
         if (modal != null) {
@@ -705,5 +794,5 @@ public final class ArchiApp extends Application {
         if (secret != null) java.util.Arrays.fill(secret, '\0');
         secret = value == null ? null : value.toCharArray();
     }
-    @Override public void stop() { closed = true; setSecret(null); queries.shutdownNow(); if (worker != null) worker.close(); }
+    @Override public void stop() { closeWindow(); }
 }
