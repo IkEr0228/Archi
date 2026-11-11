@@ -1,0 +1,15 @@
+[package]
+name = "archi-worker"
+version = "0.5.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+archi-core = { path = "../archi-core" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+mimalloc = { version = "0.1", default-features = false }
+sevenz-rust2 = { path = "../../vendor/sevenz-rust2", default-features = false, features = ["compress", "util", "aes256"] }
+
+[dev-dependencies]
+zip = { version = "2.4", default-features = false, features = ["deflate", "aes-crypto"] }

@@ -154,7 +154,7 @@ fn enumerate_directory(
             create_error("source_read", format!("Cannot read source entry: {error}"))
         })?);
     }
-    directory_entries.sort_by_key(|entry| {
+    directory_entries.sort_by_cached_key(|entry| {
         let name = entry.file_name();
         (name.to_string_lossy().to_lowercase(), name)
     });
@@ -420,6 +420,25 @@ pub(crate) fn cleanup_temp(temp_path: &Path, error: &mut CommandError) {
     }
 }
 
+/// Publish a completed same-directory staging file without deleting the old leaf first.
+///
+/// On Unix, `rename` replaces the destination atomically; for no-overwrite publishes,
+/// hard-linking first keeps an existing destination untouched. Callers must validate
+/// destination parents before staging and immediately before publishing.
+#[cfg(not(windows))]
+pub(crate) fn publish_staged_file(
+    temp_path: &Path,
+    output_path: &Path,
+    overwrite: bool,
+) -> std::io::Result<()> {
+    if overwrite {
+        fs::rename(temp_path, output_path)
+    } else {
+        fs::hard_link(temp_path, output_path)?;
+        fs::remove_file(temp_path)
+    }
+}
+
 #[cfg(windows)]
 pub(crate) fn publish_temp_archive(
     temp_path: &Path,
@@ -459,8 +478,8 @@ pub(crate) fn publish_temp_archive(
     output_path: &Path,
     overwrite: bool,
 ) -> std::io::Result<()> {
-    if overwrite && output_path.exists() {
-        fs::remove_file(output_path)?;
+    if overwrite {
+        return fs::rename(temp_path, output_path);
     }
     fs::hard_link(temp_path, output_path)?;
     fs::remove_file(temp_path)

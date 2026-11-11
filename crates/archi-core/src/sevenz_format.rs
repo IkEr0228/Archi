@@ -1,7 +1,8 @@
 //! 7z open/list/extract and create (LZMA2, solid for max ratio).
 
-#[cfg(windows)]
 use crate::conflict::unique_renamed_path;
+#[cfg(not(windows))]
+use crate::create_common::publish_staged_file;
 use crate::create_common::{
     cancelled_error, cleanup_temp, create_error, create_temporary_archive, enumerate_sources,
     member_path_for_tar, open_source_file, progress_percentage, publish_temp_archive,
@@ -67,7 +68,12 @@ fn read_only_open_capabilities() -> ArchiveCapabilities {
     }
 }
 
-fn normalize_member_name(raw: &str) -> Result<String, CommandError> {
+pub(crate) fn normalize_member_name(raw: &str) -> Result<String, CommandError> {
+    validate_entry_path(raw).map_err(|message| CommandError {
+        code: "invalid_entry".into(),
+        message,
+        path: Some(raw.into()),
+    })?;
     let mut normalized = raw.replace('\\', "/");
     while normalized.starts_with("./") {
         normalized = normalized[2..].to_string();
@@ -311,6 +317,8 @@ pub fn extract_sevenz(
     let mut created = Vec::new();
     #[cfg(windows)]
     let mut dir_cache = AHashMap::new();
+    #[cfg(windows)]
+    let mut pending = Vec::new();
     #[cfg(not(windows))]
     let mut created: Vec<()> = Vec::new();
     #[cfg(not(windows))]
@@ -406,6 +414,7 @@ pub fn extract_sevenz(
             conflict_resolver,
             &mut created,
             &mut dir_cache,
+            &mut pending,
         );
         #[cfg(not(windows))]
         let write_result = write_extracted_file(
@@ -430,9 +439,20 @@ pub fn extract_sevenz(
         Ok(true)
     });
 
+    #[cfg(windows)]
+    let result = result.and_then(|()| {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(sz_cb_err("cancelled"));
+        }
+        crate::windows_fs::publish_replacements(&mut pending, &mut created)
+            .map_err(|e| sz_cb_err(format!("Cannot publish extracted files: {e}")))
+    });
+
     // Release cached directory handles before cleanup so DELETE disposition can complete.
     #[cfg(windows)]
     drop(dir_cache);
+    #[cfg(windows)]
+    drop(pending);
 
     if let Err(error) = result {
         #[cfg(windows)]
@@ -501,10 +521,12 @@ fn write_extracted_file(
     conflict_resolver: &dyn ConflictResolver,
     created: &mut Vec<crate::windows_fs::CreatedEntry>,
     dir_cache: &mut AHashMap<PathBuf, Directory>,
+    pending: &mut Vec<crate::windows_fs::PendingReplacement>,
 ) -> Result<bool, CommandError> {
     use std::os::windows::ffi::OsStrExt;
 
     let mut write_to = destination.to_path_buf();
+    let mut overwrite = false;
     loop {
         match fs::symlink_metadata(&write_to) {
             Ok(meta) => {
@@ -528,12 +550,7 @@ fn write_extracted_file(
                         return Err(sz_error("cancelled", "Archive extraction was cancelled."))
                     }
                     ConflictDecision::Overwrite => {
-                        fs::remove_file(&write_to).map_err(|error| {
-                            sz_error(
-                                "write_failed",
-                                format!("Cannot remove existing file: {error}"),
-                            )
-                        })?;
+                        overwrite = true;
                         break;
                     }
                     ConflictDecision::Rename => {
@@ -616,18 +633,28 @@ fn write_extracted_file(
             .flush()
             .map_err(|error| sz_error("write_failed", format!("Cannot flush file: {error}")))?;
     }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(sz_error("cancelled", "Archive extraction was cancelled."));
+    }
+    output
+        .sync_all()
+        .map_err(|e| sz_error("write_failed", format!("Cannot sync file: {e}")))?;
     drop(output);
     let created_file = created
         .get(created_index)
         .ok_or_else(|| sz_error("write_failed", "Missing created temp file handle."))?;
-    parent
-        .rename_new_file(created_file, &wide)
-        .map_err(|error| {
-            sz_error(
-                "write_failed",
-                format!("Cannot finalize extracted file: {error}"),
-            )
-        })?;
+    if overwrite {
+        crate::windows_fs::stage_replacement(pending, &parent, created_file, &wide);
+    } else {
+        parent
+            .publish_file(created_file, &wide, false)
+            .map_err(|error| {
+                sz_error(
+                    "write_failed",
+                    format!("Cannot finalize extracted file: {error}"),
+                )
+            })?;
+    }
     Ok(true)
 }
 
@@ -645,6 +672,7 @@ fn write_extracted_file(
     _dir_cache: &mut AHashMap<PathBuf, ()>,
 ) -> Result<bool, CommandError> {
     let mut write_to = destination.to_path_buf();
+    let mut overwrite = false;
     if write_to.exists() {
         let decision =
             conflict_resolver.resolve_file_exists(operation_id, entry_path, &write_to)?;
@@ -654,15 +682,19 @@ fn write_extracted_file(
                 return Err(sz_error("cancelled", "Archive extraction was cancelled."))
             }
             ConflictDecision::Overwrite => {
-                fs::remove_file(&write_to).map_err(|e| {
-                    sz_error("write_failed", format!("Cannot remove existing file: {e}"))
-                })?;
+                overwrite = true;
             }
             ConflictDecision::Rename => {
-                return Err(sz_error(
-                    "unsupported_operation",
-                    "Rename conflict is Windows-only in this build.",
-                ));
+                let parent = write_to
+                    .parent()
+                    .ok_or_else(|| sz_error("invalid_destination", "Destination has no parent."))?;
+                let leaf = write_to
+                    .file_name()
+                    .ok_or_else(|| {
+                        sz_error("invalid_destination", "Destination has no file name.")
+                    })?
+                    .to_string_lossy();
+                write_to = unique_renamed_path(parent, &leaf)?;
             }
         }
     }
@@ -670,26 +702,36 @@ fn write_extracted_file(
         fs::create_dir_all(parent)
             .map_err(|e| sz_error("write_failed", format!("Cannot create parents: {e}")))?;
     }
-    let mut file = fs::File::create(&write_to)
-        .map_err(|e| sz_error("write_failed", format!("Cannot create file: {e}")))?;
-    if expected_size > 0 {
-        let _ = file.set_len(expected_size);
-    }
-    let mut buffer = [0_u8; BUFFER_SIZE];
-    loop {
-        if cancelled.load(Ordering::Relaxed) {
-            return Err(sz_error("cancelled", "Archive extraction was cancelled."));
+    let (temp, mut file) = create_temporary_archive(&write_to)?;
+    let result = (|| {
+        if expected_size > 0 {
+            let _ = file.set_len(expected_size);
         }
-        let n = reader
-            .read(&mut buffer)
-            .map_err(|e| sz_error("invalid_archive", format!("Cannot read: {e}")))?;
-        if n == 0 {
-            break;
+        let mut buffer = [0_u8; BUFFER_SIZE];
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(sz_error("cancelled", "Archive extraction was cancelled."));
+            }
+            let n = reader
+                .read(&mut buffer)
+                .map_err(|e| sz_error("invalid_archive", format!("Cannot read: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buffer[..n])
+                .map_err(|e| sz_error("write_failed", format!("Cannot write: {e}")))?;
         }
-        file.write_all(&buffer[..n])
-            .map_err(|e| sz_error("write_failed", format!("Cannot write: {e}")))?;
+        file.sync_all()
+            .map_err(|e| sz_error("write_failed", format!("Cannot sync file: {e}")))?;
+        drop(file);
+        publish_staged_file(&temp, &write_to, overwrite)
+            .map_err(|e| sz_error("write_failed", format!("Cannot publish file: {e}")))?;
+        Ok(true)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
     }
-    Ok(true)
+    result
 }
 
 fn lzma2_level(preset: CompressionPreset) -> u32 {
@@ -703,18 +745,22 @@ fn lzma2_level(preset: CompressionPreset) -> u32 {
 }
 
 pub(crate) fn lzma2_options(preset: CompressionPreset) -> Lzma2Options {
+    lzma2_options_for_size(preset, u64::MAX)
+}
+
+fn lzma2_options_for_size(preset: CompressionPreset, size: u64) -> Lzma2Options {
     let level = lzma2_level(preset);
     let threads = std::thread::available_parallelism()
         .map(|n| n.get() as u32)
         .unwrap_or(1);
-    if threads > 1 && level > 0 {
+    if threads > 1 && level > 0 && size >= 1 << 21 {
         Lzma2Options::from_level_mt(level, threads, 1 << 21)
     } else {
         Lzma2Options::from_level(level)
     }
 }
 
-/// Create a 7z archive. Uses solid LZMA2 for Normal/Max (best ratio); non-solid for Store/Fast.
+/// Create a non-solid LZMA2 archive, preserving independently editable file streams.
 pub fn create_sevenz_archive(
     source_paths: &[String],
     output_path: &Path,
@@ -740,16 +786,18 @@ pub fn create_sevenz_archive(
     }
 
     let (temp_path, temp_file) = create_temporary_archive(&output_path)?;
-    let lzma2_opt = lzma2_options(options.compression);
 
     let result = (|| -> Result<OperationSummary, CommandError> {
         let mut writer = ArchiveWriter::new(temp_file).map_err(map_sz_error)?;
-        let methods = if password.is_empty() {
-            vec![lzma2_opt.into()]
+        let initial = lzma2_options_for_size(options.compression, 0);
+        writer.set_content_methods(if password.is_empty() {
+            vec![initial.into()]
         } else {
-            vec![AesEncoderOptions::new(password).into(), lzma2_opt.into()]
-        };
-        writer.set_content_methods(methods);
+            vec![
+                AesEncoderOptions::new(password.clone()).into(),
+                initial.into(),
+            ]
+        });
 
         let mut processed = 0_u64;
         let mut progress_gate = ProgressGate::new();
@@ -788,6 +836,25 @@ pub fn create_sevenz_archive(
                         format!("Cannot open source {}: {error}", entry.path.display()),
                     )
                 })?;
+                let size = source
+                    .metadata()
+                    .map_err(|error| {
+                        create_error(
+                            "source_read",
+                            format!("Cannot inspect opened source: {error}"),
+                        )
+                    })?
+                    .len();
+                // A sub-block stream cannot use parallel blocks; avoid spawning idle encoders per file.
+                let lzma2_opt = lzma2_options_for_size(options.compression, size);
+                writer.set_content_methods(if password.is_empty() {
+                    vec![lzma2_opt.into()]
+                } else {
+                    vec![
+                        AesEncoderOptions::new(password.clone()).into(),
+                        lzma2_opt.into(),
+                    ]
+                });
                 writer
                     .push_archive_entry(SzEntry::from_path(&entry.path, member), Some(source))
                     .map_err(map_sz_error)?;

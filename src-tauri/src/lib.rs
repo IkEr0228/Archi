@@ -1,36 +1,10 @@
-pub mod archive;
-pub mod archive_edit;
+// Keep existing adapter/test imports stable while the desktop shell is replaced.
+pub use archi_core::*;
 pub mod batch_create;
-pub mod bzip2_format;
 pub mod cli_handler;
 pub mod cli_open;
 pub mod commands;
-pub mod conflict;
 pub mod context_menu;
-pub mod create_common;
 pub mod drag_out;
-pub mod extraction;
 pub mod file_assoc;
-pub mod format_detect;
-pub mod gzip_format;
-pub mod io_perf;
-pub mod models;
-pub mod operations;
-pub mod rar_format;
-pub mod security;
-pub mod sevenz_edit;
-pub mod sevenz_format;
-/// Non-solid 7z pack-stream byte-copy (product path via `sevenz_edit::apply_planned`).
-pub mod sevenz_pack_copy;
-pub mod tar_create;
-pub mod tar_edit;
-pub mod tar_format;
-pub mod testing;
 pub mod window_manager;
-pub mod xz_format;
-pub mod zip_cd;
-pub mod zip_edit;
-pub mod zipper;
-
-#[cfg(windows)]
-mod windows_fs;

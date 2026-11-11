@@ -45,7 +45,7 @@ fn temporary_edit_archives(root: &Path) -> Vec<PathBuf> {
             path.file_name()
                 .unwrap()
                 .to_string_lossy()
-                .contains(".archi-edit-")
+                .contains(".archi-part-")
         })
         .collect()
 }

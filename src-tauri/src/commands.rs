@@ -9,18 +9,17 @@ use crate::archive_edit::{
     add_paths, compact_archive, create_folder, delete_entries, move_entries, rename_entry,
     replace_file,
 };
+pub use crate::destination::ensure_directory_path;
 use crate::models::{
     ArchiveInfo, CommandError, ConflictDecision, CreateFormat, CreateOptions, EditOptions,
     EditSummary, ExtractConflictEvent, OperationSummary, TestArchiveSummary,
 };
 use crate::operations::OperationRegistry;
-use crate::security::is_link_or_reparse_point;
 use crate::sevenz_format::create_sevenz_archive;
 use crate::tar_create::create_tar_archive;
 use crate::testing::test_archive;
 use crate::zipper::create_zip_archive;
 use sevenz_rust2::Password;
-use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -662,94 +661,6 @@ pub fn select_save_archive(
 pub fn select_multiple_files(app: tauri::AppHandle) -> Result<Option<Vec<String>>, String> {
     let file_paths = app.dialog().file().blocking_pick_files();
     Ok(file_paths.map(|paths| paths.into_iter().map(file_path_to_string).collect()))
-}
-
-/// Ensures a single leaf directory exists under an already-existing parent.
-/// Does not create intermediate parents — parent must already resolve as a directory.
-pub fn ensure_directory_path(path: &Path) -> Result<String, CommandError> {
-    if path.as_os_str().is_empty() {
-        return Err(CommandError::new(
-            "invalid_destination",
-            "Destination path is empty.",
-        ));
-    }
-    let parent = path.parent().ok_or_else(|| {
-        CommandError::new(
-            "invalid_destination",
-            "Destination has no parent directory.",
-        )
-    })?;
-    if parent.as_os_str().is_empty() {
-        return Err(CommandError::new(
-            "invalid_destination",
-            "Destination parent is invalid.",
-        ));
-    }
-
-    // Reject link/reparse parents before following them via canonicalize.
-    let parent_meta = fs::symlink_metadata(parent).map_err(|e| {
-        CommandError::new(
-            "invalid_destination",
-            format!("Cannot resolve destination parent: {e}"),
-        )
-    })?;
-    if is_link_or_reparse_point(&parent_meta) || !parent_meta.is_dir() {
-        return Err(CommandError::new(
-            "invalid_destination",
-            "Destination parent is not a usable directory.",
-        ));
-    }
-
-    let parent = parent.canonicalize().map_err(|e| {
-        CommandError::new(
-            "invalid_destination",
-            format!("Cannot resolve destination parent: {e}"),
-        )
-    })?;
-    if !parent.is_dir() {
-        return Err(CommandError::new(
-            "invalid_destination",
-            "Destination parent is not a directory.",
-        ));
-    }
-    let name = path.file_name().ok_or_else(|| {
-        CommandError::new("invalid_destination", "Destination leaf name is missing.")
-    })?;
-    let candidate = parent.join(name);
-    if candidate.exists() {
-        let meta = fs::symlink_metadata(&candidate).map_err(|e| {
-            CommandError::new(
-                "invalid_destination",
-                format!("Cannot inspect destination: {e}"),
-            )
-        })?;
-        if is_link_or_reparse_point(&meta) || !meta.is_dir() {
-            return Err(CommandError::new(
-                "invalid_destination",
-                "Destination exists and is not a usable directory.",
-            ));
-        }
-    } else {
-        fs::create_dir(&candidate).map_err(|e| {
-            CommandError::new(
-                "invalid_destination",
-                format!("Cannot create destination directory: {e}"),
-            )
-        })?;
-    }
-    let canonical = candidate.canonicalize().map_err(|e| {
-        CommandError::new(
-            "invalid_destination",
-            format!("Cannot resolve created destination: {e}"),
-        )
-    })?;
-    if !canonical.starts_with(&parent) {
-        return Err(CommandError::new(
-            "invalid_destination",
-            "Destination escaped parent directory.",
-        ));
-    }
-    Ok(canonical.to_string_lossy().into_owned())
 }
 
 #[command]

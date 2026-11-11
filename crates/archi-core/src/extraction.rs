@@ -136,18 +136,15 @@ fn entry_matches_sel(entry: &str, sel: &str) -> bool {
         && entry.starts_with(sel)
 }
 
-/// Pre-normalized selection for O(1)/O(k) membership without per-call allocs.
+/// Pre-normalized selection for O(path depth) membership without per-call allocations.
 #[derive(Debug, Clone)]
 pub struct SelectionIndex {
     exact: HashSet<String>,
-    /// Prefixes stored as `folder/` for fast `starts_with`.
-    prefixes: Vec<String>,
 }
 
 impl SelectionIndex {
     pub fn from_selected(selected: &[String]) -> Result<Self, CommandError> {
         let mut exact = HashSet::with_capacity(selected.len());
-        let mut prefixes = Vec::with_capacity(selected.len());
         for raw in selected {
             let sel = normalize_entry_name(raw);
             if sel.is_empty() {
@@ -156,10 +153,9 @@ impl SelectionIndex {
                     "Selection contains an empty path.",
                 ));
             }
-            prefixes.push(format!("{sel}/"));
             exact.insert(sel);
         }
-        Ok(Self { exact, prefixes })
+        Ok(Self { exact })
     }
 
     #[inline]
@@ -167,7 +163,9 @@ impl SelectionIndex {
         if self.exact.contains(entry) {
             return true;
         }
-        self.prefixes.iter().any(|p| entry.starts_with(p.as_str()))
+        entry
+            .match_indices('/')
+            .any(|(offset, _)| self.exact.contains(&entry[..offset]))
     }
 
     pub fn includes_entry(&self, entry_name: &str) -> bool {
@@ -189,12 +187,18 @@ pub fn validate_selection(
     archive_names: &[String],
 ) -> Result<(), CommandError> {
     let index = SelectionIndex::from_selected(selected)?;
-    // Ensure every selected path is covered by at least one archive entry.
+    let names: std::collections::BTreeSet<_> = archive_names
+        .iter()
+        .map(|n| normalize_entry_name(n))
+        .collect();
+    // Normalize archive names once, then exact/prefix lookup instead of S full scans.
     for sel in &index.exact {
-        let ok = archive_names.iter().any(|n| {
-            let entry = normalize_entry_name(n);
-            entry_matches_sel(&entry, sel)
-        });
+        let prefix = format!("{sel}/");
+        let ok = names.contains(sel)
+            || names
+                .range(prefix.clone()..)
+                .next()
+                .is_some_and(|entry| entry.starts_with(&prefix));
         if !ok {
             return Err(extraction_error(
                 "invalid_selection",
@@ -242,13 +246,11 @@ fn plan_existing_destination(
 /// Write-time handling when a regular file already occupies the planned leaf.
 /// Returns `Some(final_wide_name)` to write, or `None` if the entry was skipped.
 ///
-/// Overwrite deletes the leaf via the parent directory handle (disposition),
-/// never via path-based `remove_file`.
+/// Overwrite authorizes replacement only after decoding has succeeded.
 #[cfg(windows)]
 fn resolve_existing_file_dest(
     operation_id: &str,
     plan: &PlannedEntry,
-    parent: &Directory,
     leaf_name: &[u16],
     conflict_resolver: &dyn ConflictResolver,
     skipped_files: &mut u64,
@@ -257,22 +259,7 @@ fn resolve_existing_file_dest(
         conflict_resolver.resolve_file_exists(operation_id, &plan.name, &plan.destination)?;
 
     match decision {
-        ConflictDecision::Overwrite => {
-            parent.delete_file_by_name(leaf_name).map_err(|error| {
-                if error.kind() == std::io::ErrorKind::InvalidInput {
-                    extraction_error(
-                        "unsafe_destination",
-                        "Destination entry is a symbolic link or reparse point.",
-                    )
-                } else {
-                    extraction_error(
-                        "write_failed",
-                        format!("Cannot remove existing destination file: {error}"),
-                    )
-                }
-            })?;
-            Ok(Some(leaf_name.to_vec()))
-        }
+        ConflictDecision::Overwrite => Ok(Some(leaf_name.to_vec())),
         ConflictDecision::Skip => {
             *skipped_files += 1;
             Ok(None)
@@ -384,6 +371,7 @@ fn extract_windows(
                 )
             })?;
             let mut final_name = file_name.encode_wide().collect::<Vec<_>>();
+            let mut overwrite = false;
 
             // Handle-relative existence probe (no path remove_file / no sole
             // reliance on path symlink_metadata once parent handle is open).
@@ -413,12 +401,14 @@ fn extract_windows(
                         match resolve_existing_file_dest(
                             operation_id,
                             plan,
-                            &parent,
                             &final_name,
                             conflict_resolver,
                             &mut skipped_files,
                         )? {
-                            Some(name) => final_name = name,
+                            Some(name) => {
+                                overwrite = name == final_name;
+                                final_name = name;
+                            }
                             None => continue,
                         }
                     }
@@ -514,18 +504,28 @@ fn extract_windows(
                         )
                     })?;
                 }
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err(cancelled_error());
+                }
+                output.sync_all().map_err(|e| {
+                    extraction_error("write_failed", format!("Cannot sync extracted file: {e}"))
+                })?;
                 drop(output);
                 let created_file = created.get(created_index).ok_or_else(|| {
                     extraction_error("write_failed", "Temporary file tracking was unavailable.")
                 })?;
                 parent
-                    .rename_new_file(created_file, &final_name)
+                    .publish_file(created_file, &final_name, overwrite)
                     .map_err(|error| {
                         extraction_error(
                             "write_failed",
                             format!("Cannot securely finalize extracted file: {error}"),
                         )
                     })?;
+                // A later entry failure must not remove an already completed replacement.
+                if overwrite {
+                    created.remove(created_index);
+                }
             }
             extracted_files += 1;
         }

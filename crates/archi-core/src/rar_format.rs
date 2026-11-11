@@ -1,6 +1,8 @@
 //! RAR open/list and extract implementation using `unrar` (read/extract only).
 
 use crate::conflict::unique_renamed_path;
+#[cfg(not(windows))]
+use crate::create_common::{create_temporary_archive, publish_staged_file};
 use crate::extraction::{validate_selection, ConflictResolver, SelectionIndex};
 use crate::models::{
     ArchiveCapabilities, ArchiveEntry, ArchiveInfo, ArchiveStats, CommandError, ConflictDecision,
@@ -49,6 +51,11 @@ fn rar_capabilities() -> ArchiveCapabilities {
 }
 
 fn normalize_member_name(raw: &str) -> Result<String, CommandError> {
+    validate_entry_path(raw).map_err(|message| CommandError {
+        code: "invalid_entry".into(),
+        message,
+        path: Some(raw.into()),
+    })?;
     let mut normalized = raw.replace('\\', "/");
     while normalized.starts_with("./") {
         normalized = normalized[2..].to_string();
@@ -212,6 +219,7 @@ pub fn open_rar(path: &Path, password: Option<&str>) -> Result<ArchiveInfo, Comm
 }
 
 /// Extract RAR archive with path validation, selection filtering, conflict resolution, and cancellation.
+#[cfg(not(windows))]
 pub fn extract_rar(
     archive_path: &Path,
     destination: &Path,
@@ -340,12 +348,25 @@ pub fn extract_rar(
         }
 
         let mut write_target = target_path.clone();
-        if target_path.exists() {
+        let mut overwrite = false;
+        if let Ok(meta) = fs::symlink_metadata(&target_path) {
+            if crate::security::is_link_or_reparse_point(&meta) {
+                return Err(rar_error(
+                    "unsafe_destination",
+                    "Destination is a symbolic link.",
+                ));
+            }
+            if !meta.is_file() {
+                return Err(rar_error(
+                    "conflict",
+                    "Cannot overwrite a directory with a file.",
+                ));
+            }
             let decision =
                 conflict_resolver.resolve_file_exists(operation_id, &normalized, &target_path)?;
             match decision {
                 ConflictDecision::Overwrite => {
-                    let _ = fs::remove_file(&target_path);
+                    overwrite = true;
                 }
                 ConflictDecision::Skip => {
                     skipped_files += 1;
@@ -368,7 +389,23 @@ pub fn extract_rar(
             }
         }
 
-        open_archive = cursor.extract_to(&write_target).map_err(map_unrar_error)?;
+        let (temp, temp_file) = create_temporary_archive(&write_target)?;
+        drop(temp_file);
+        let next_archive = match cursor.extract_to(&temp) {
+            Ok(next) => next,
+            Err(error) => {
+                let _ = fs::remove_file(&temp);
+                return Err(map_unrar_error(error));
+            }
+        };
+        publish_staged_file(&temp, &write_target, overwrite).map_err(|error| {
+            let _ = fs::remove_file(&temp);
+            rar_error(
+                "write_failed",
+                format!("Cannot publish extracted file: {error}"),
+            )
+        })?;
+        open_archive = next_archive;
         extracted_files += 1;
 
         emit(OperationProgress {
@@ -383,6 +420,165 @@ pub fn extract_rar(
 
     Ok(OperationSummary {
         operation_id: operation_id.to_string(),
+        extracted_files,
+        total_files,
+        skipped_files,
+        destination: destination.to_string_lossy().into_owned(),
+    })
+}
+
+#[cfg(windows)]
+pub fn extract_rar(
+    archive_path: &Path,
+    destination: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    selected_paths: Option<&[String]>,
+    conflict_resolver: &dyn ConflictResolver,
+    password: Option<String>,
+    mut emit: impl FnMut(OperationProgress),
+) -> Result<OperationSummary, CommandError> {
+    if operation_id.is_empty() {
+        return Err(rar_error("invalid_operation", "Operation ID is empty."));
+    }
+    if !archive_path.is_file() {
+        return Err(rar_error("not_found", "Source archive does not exist."));
+    }
+    if !destination.is_dir() {
+        return Err(rar_error(
+            "invalid_destination",
+            "Destination directory does not exist.",
+        ));
+    }
+    let destination = destination
+        .canonicalize()
+        .map_err(|e| rar_error("invalid_destination", e.to_string()))?;
+    let info = open_rar(archive_path, password.as_deref())?;
+    let selection = if let Some(paths) = selected_paths {
+        if paths.is_empty() {
+            return Err(rar_error(
+                "empty_selection",
+                "No archive entries were selected for extraction.",
+            ));
+        }
+        validate_selection(
+            paths,
+            &info
+                .entries
+                .iter()
+                .map(|e| e.path.clone())
+                .collect::<Vec<_>>(),
+        )?;
+        Some(SelectionIndex::from_selected(paths)?)
+    } else {
+        None
+    };
+    let total_files = info
+        .entries
+        .iter()
+        .filter(|e| {
+            !e.is_directory
+                && selection
+                    .as_ref()
+                    .is_none_or(|s| s.includes_normalized(&e.path))
+        })
+        .count() as u64;
+    let mut reader = crate::rar_stream::Reader::open(archive_path, password.as_deref())?;
+    let root = crate::windows_fs::Directory::open_root(&destination)
+        .map_err(|e| rar_error("unsafe_destination", e.to_string()))?;
+    let mut extracted_files = 0;
+    let mut skipped_files = 0;
+    while let Some(header) = reader.next()? {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err(rar_error("cancelled", "Extraction was cancelled."));
+        }
+        let name = normalize_member_name(&header.name)?;
+        if selection
+            .as_ref()
+            .is_some_and(|s| !s.includes_normalized(&name))
+        {
+            reader.skip()?;
+            continue;
+        }
+        if header.is_special {
+            return Err(rar_error(
+                "unsafe_entry",
+                "RAR links and special files are not supported.",
+            ));
+        }
+        let target = safe_destination_path_under_canonical(&destination, &name)
+            .map_err(|e| rar_error("unsafe_destination", e))?;
+        if header.is_directory {
+            // Each write re-walks through pinned no-reparse handles; no native path extraction.
+            root.ensure_path(&destination, &target, &mut Vec::new(), &mut AHashMap::new())
+                .map_err(|e| rar_error("unsafe_destination", e.to_string()))?;
+            reader.skip()?;
+            continue;
+        }
+        let mut target = target;
+        let mut replace = false;
+        let skip = loop {
+            match fs::symlink_metadata(&target) {
+                Ok(meta) => {
+                    if crate::security::is_link_or_reparse_point(&meta) {
+                        return Err(rar_error(
+                            "unsafe_destination",
+                            "Destination is a reparse point.",
+                        ));
+                    }
+                    if !meta.is_file() {
+                        return Err(rar_error(
+                            "conflict",
+                            "Cannot overwrite a directory with a file.",
+                        ));
+                    }
+                    match conflict_resolver.resolve_file_exists(operation_id, &name, &target)? {
+                        ConflictDecision::Overwrite => {
+                            replace = true;
+                            break false;
+                        }
+                        ConflictDecision::Skip => break true,
+                        ConflictDecision::Cancel => {
+                            return Err(rar_error("cancelled", "Extraction cancelled by user."))
+                        }
+                        ConflictDecision::Rename => {
+                            target = unique_renamed_path(
+                                target.parent().unwrap(),
+                                &target.file_name().unwrap().to_string_lossy(),
+                            )?;
+                        }
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break false,
+                Err(e) => return Err(rar_error("write_failed", e.to_string())),
+            }
+        };
+        if skip {
+            reader.skip()?;
+            skipped_files += 1;
+        } else {
+            crate::stream_extract::write_stream(
+                &destination,
+                &target,
+                replace,
+                cancelled,
+                |writer| reader.write(writer, cancelled),
+            )?;
+            extracted_files += 1;
+        }
+        emit(OperationProgress {
+            operation_id: operation_id.into(),
+            extracted_files,
+            total_files,
+            current_file: name,
+            percentage: ((extracted_files + skipped_files) as f32 / total_files.max(1) as f32
+                * 100.0)
+                .min(100.0),
+            phase: Some("extract".into()),
+        });
+    }
+    Ok(OperationSummary {
+        operation_id: operation_id.into(),
         extracted_files,
         total_files,
         skipped_files,

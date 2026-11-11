@@ -9,6 +9,11 @@ use std::sync::atomic::AtomicBool;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join(if env!("CARGO_PKG_NAME") == "archi-core" {
+            "../../src-tauri"
+        } else {
+            "."
+        })
         .join("tests")
         .join("fixtures")
         .join(name)

@@ -1,7 +1,8 @@
 //! TAR and TAR.GZ open/list/extract.
 
-#[cfg(windows)]
 use crate::conflict::unique_renamed_path;
+#[cfg(not(windows))]
+use crate::create_common::{create_temporary_archive, publish_staged_file};
 use crate::extraction::{
     normalize_entry_name, validate_selection, ConflictResolver, SelectionIndex,
 };
@@ -365,10 +366,12 @@ fn extract_one_file_windows(
     conflict_resolver: &dyn ConflictResolver,
     created: &mut Vec<crate::windows_fs::CreatedEntry>,
     dir_cache: &mut AHashMap<PathBuf, Directory>,
+    pending: &mut Vec<crate::windows_fs::PendingReplacement>,
 ) -> Result<bool, CommandError> {
     use std::os::windows::ffi::OsStrExt;
 
     let mut write_to = destination.to_path_buf();
+    let mut overwrite = false;
 
     loop {
         match fs::symlink_metadata(&write_to) {
@@ -393,12 +396,7 @@ fn extract_one_file_windows(
                         return Err(tar_error("cancelled", "Archive extraction was cancelled."))
                     }
                     ConflictDecision::Overwrite => {
-                        fs::remove_file(&write_to).map_err(|error| {
-                            tar_error(
-                                "write_failed",
-                                format!("Cannot remove existing file: {error}"),
-                            )
-                        })?;
+                        overwrite = true;
                         break;
                     }
                     ConflictDecision::Rename => {
@@ -488,20 +486,29 @@ fn extract_one_file_windows(
             .flush()
             .map_err(|error| tar_error("write_failed", format!("Cannot flush file: {error}")))?;
     }
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(tar_error("cancelled", "Archive extraction was cancelled."));
+    }
+    output
+        .sync_all()
+        .map_err(|e| tar_error("write_failed", format!("Cannot sync file: {e}")))?;
     drop(output);
 
     let created_file = created
         .get(created_index)
         .ok_or_else(|| tar_error("write_failed", "Missing created temp file handle."))?;
-    parent
-        .rename_new_file(created_file, &wide)
-        .map_err(|error| {
-            tar_error(
-                "write_failed",
-                format!("Cannot finalize extracted file: {error}"),
-            )
-        })?;
-
+    if overwrite {
+        crate::windows_fs::stage_replacement(pending, &parent, created_file, &wide);
+    } else {
+        parent
+            .publish_file(created_file, &wide, false)
+            .map_err(|error| {
+                tar_error(
+                    "write_failed",
+                    format!("Cannot finalize extracted file: {error}"),
+                )
+            })?;
+    }
     Ok(true)
 }
 
@@ -519,6 +526,7 @@ fn extract_one_file_windows(
     _dir_cache: &mut AHashMap<PathBuf, ()>,
 ) -> Result<bool, CommandError> {
     let mut write_to = destination.to_path_buf();
+    let mut overwrite = false;
     if write_to.exists() {
         let decision =
             conflict_resolver.resolve_file_exists(operation_id, entry_path, &write_to)?;
@@ -527,16 +535,18 @@ fn extract_one_file_windows(
             ConflictDecision::Cancel => {
                 return Err(tar_error("cancelled", "Archive extraction was cancelled."))
             }
-            ConflictDecision::Overwrite => {
-                fs::remove_file(&write_to).map_err(|e| {
-                    tar_error("write_failed", format!("Cannot remove existing file: {e}"))
-                })?;
-            }
+            ConflictDecision::Overwrite => overwrite = true,
             ConflictDecision::Rename => {
-                return Err(tar_error(
-                    "unsupported_operation",
-                    "Rename conflict is Windows-only in this build.",
-                ));
+                let parent = write_to.parent().ok_or_else(|| {
+                    tar_error("invalid_destination", "Destination has no parent.")
+                })?;
+                let leaf = write_to
+                    .file_name()
+                    .ok_or_else(|| {
+                        tar_error("invalid_destination", "Destination has no file name.")
+                    })?
+                    .to_string_lossy();
+                write_to = unique_renamed_path(parent, &leaf)?;
             }
         }
     }
@@ -544,26 +554,36 @@ fn extract_one_file_windows(
         fs::create_dir_all(parent)
             .map_err(|e| tar_error("write_failed", format!("Cannot create parents: {e}")))?;
     }
-    let mut file = fs::File::create(&write_to)
-        .map_err(|e| tar_error("write_failed", format!("Cannot create file: {e}")))?;
-    if expected_size > 0 {
-        let _ = file.set_len(expected_size);
-    }
-    let mut buffer = [0_u8; BUFFER_SIZE];
-    loop {
-        if cancelled.load(Ordering::Relaxed) {
-            return Err(tar_error("cancelled", "Archive extraction was cancelled."));
+    let (temp, mut file) = create_temporary_archive(&write_to)?;
+    let result = (|| {
+        if expected_size > 0 {
+            let _ = file.set_len(expected_size);
         }
-        let n = reader
-            .read(&mut buffer)
-            .map_err(|e| tar_error("invalid_archive", format!("Cannot read: {e}")))?;
-        if n == 0 {
-            break;
+        let mut buffer = [0_u8; BUFFER_SIZE];
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(tar_error("cancelled", "Archive extraction was cancelled."));
+            }
+            let n = reader
+                .read(&mut buffer)
+                .map_err(|e| tar_error("invalid_archive", format!("Cannot read: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buffer[..n])
+                .map_err(|e| tar_error("write_failed", format!("Cannot write: {e}")))?;
         }
-        file.write_all(&buffer[..n])
-            .map_err(|e| tar_error("write_failed", format!("Cannot write: {e}")))?;
+        file.sync_all()
+            .map_err(|e| tar_error("write_failed", format!("Cannot sync file: {e}")))?;
+        drop(file);
+        publish_staged_file(&temp, &write_to, overwrite)
+            .map_err(|e| tar_error("write_failed", format!("Cannot publish file: {e}")))?;
+        Ok(true)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temp);
     }
-    Ok(true)
+    result
 }
 
 fn discard_tar_entry(entry: &mut impl Read) -> Result<(), CommandError> {
@@ -668,6 +688,8 @@ fn extract_tar_reader<R: Read>(
     let mut created = Vec::new();
     #[cfg(windows)]
     let mut dir_cache = AHashMap::new();
+    #[cfg(windows)]
+    let mut pending = Vec::new();
     #[cfg(not(windows))]
     let mut created = Vec::new();
     #[cfg(not(windows))]
@@ -801,6 +823,7 @@ fn extract_tar_reader<R: Read>(
                 conflict_resolver,
                 &mut created,
                 &mut dir_cache,
+                &mut pending,
             )?;
             #[cfg(not(windows))]
             let written = extract_one_file_windows(
@@ -823,12 +846,35 @@ fn extract_tar_reader<R: Read>(
                 discard_tar_entry(&mut entry)?;
             }
         }
+        // TAR stops at its zero blocks; compressed footer/CRC may still be unread.
+        let mut decoder = archive.into_inner();
+        let mut buffer = vec![0_u8; BUFFER_SIZE];
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                return Err(tar_error("cancelled", "Archive extraction was cancelled."));
+            }
+            let n = decoder.read(&mut buffer).map_err(|e| {
+                tar_error("invalid_archive", format!("Cannot finish tar stream: {e}"))
+            })?;
+            if n == 0 {
+                break;
+            }
+        }
+        #[cfg(windows)]
+        crate::windows_fs::publish_replacements(&mut pending, &mut created).map_err(|e| {
+            tar_error(
+                "write_failed",
+                format!("Cannot publish extracted files: {e}"),
+            )
+        })?;
         Ok(())
     })();
 
     // Release cached directory handles before cleanup so DELETE disposition can complete.
     #[cfg(windows)]
     drop(dir_cache);
+    #[cfg(windows)]
+    drop(pending);
 
     if let Err(mut error) = result {
         #[cfg(windows)]

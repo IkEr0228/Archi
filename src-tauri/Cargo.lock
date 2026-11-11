@@ -91,10 +91,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "archi_backend"
+name = "archi-core"
 version = "0.5.0"
 dependencies = [
  "ahash",
+ "bzip2",
+ "flate2",
+ "serde",
+ "serde_json",
+ "sevenz-rust2",
+ "tar",
+ "unrar",
+ "unrar_sys",
+ "xz2",
+ "zip",
+]
+
+[[package]]
+name = "archi_backend"
+version = "0.5.0"
+dependencies = [
+ "archi-core",
  "bzip2",
  "drag",
  "flate2",
@@ -109,7 +126,6 @@ dependencies = [
  "tauri-plugin-drag",
  "tauri-plugin-single-instance",
  "tokio",
- "unrar",
  "winreg",
  "xz2",
  "zip",

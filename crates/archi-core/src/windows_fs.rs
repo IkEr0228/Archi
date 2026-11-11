@@ -12,6 +12,7 @@ use std::sync::Arc;
 const OBJ_CASE_INSENSITIVE: u32 = 0x40;
 const OBJ_DONT_REPARSE: u32 = 0x1000;
 const FILE_SHARE_READ_WRITE: u32 = 0x3;
+#[cfg(test)]
 const FILE_SHARE_READ_WRITE_DELETE: u32 = 0x7;
 const FILE_OPEN: u32 = 1;
 const FILE_CREATE: u32 = 2;
@@ -92,6 +93,54 @@ pub struct CreatedEntry {
     handle: Arc<File>,
 }
 
+/// Existing files remain untouched until the enclosing codec has validated its trailer.
+pub struct PendingReplacement {
+    parent: Directory,
+    source: CreatedEntry,
+    destination: Vec<u16>,
+}
+
+pub fn stage_replacement(
+    pending: &mut Vec<PendingReplacement>,
+    parent: &Directory,
+    source: &CreatedEntry,
+    destination: &[u16],
+) {
+    pending.push(PendingReplacement {
+        parent: parent.clone(),
+        source: CreatedEntry {
+            handle: Arc::clone(&source.handle),
+        },
+        destination: destination.to_vec(),
+    });
+}
+
+pub fn publish_replacements(
+    pending: &mut Vec<PendingReplacement>,
+    created: &mut Vec<CreatedEntry>,
+) -> io::Result<()> {
+    let staged: std::collections::HashSet<_> = pending
+        .iter()
+        .map(|replacement| Arc::as_ptr(&replacement.source.handle))
+        .collect();
+    // Pending owns rollback handles now. Release each committed handle before the next
+    // rename, so duplicate (including case-equivalent) targets retain last-entry-wins.
+    created.retain(|entry| !staged.contains(&Arc::as_ptr(&entry.handle)));
+    let mut replacements = std::mem::take(pending).into_iter();
+    while let Some(replacement) = replacements.next() {
+        if let Err(error) =
+            replacement
+                .parent
+                .publish_file(&replacement.source, &replacement.destination, true)
+        {
+            created.push(replacement.source);
+            created.extend(replacements.map(|replacement| replacement.source));
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
 /// Result of probing a leaf name under a directory handle without following reparse points.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeafProbe {
@@ -104,6 +153,12 @@ pub enum LeafProbe {
 pub struct PinnedFile {
     _parent: Directory,
     file: File,
+}
+
+impl PinnedFile {
+    pub fn metadata(&self) -> io::Result<std::fs::Metadata> {
+        self.file.metadata()
+    }
 }
 
 impl Read for PinnedFile {
@@ -287,7 +342,24 @@ impl Directory {
         Ok(handle)
     }
 
-    pub fn rename_new_file(&self, source: &CreatedEntry, destination: &[u16]) -> io::Result<()> {
+    /// Publish a fully decoded file. Replacement never deletes the old leaf first.
+    pub fn publish_file(
+        &self,
+        source: &CreatedEntry,
+        destination: &[u16],
+        replace: bool,
+    ) -> io::Result<()> {
+        if replace {
+            match self.try_probe_file(destination)? {
+                LeafProbe::File | LeafProbe::NotFound => {}
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Cannot replace a directory or reparse point.",
+                    ))
+                }
+            }
+        }
         let header_size = file_rename_name_offset();
         let name_size = destination.len().checked_mul(2).ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "Destination name is too long.")
@@ -295,7 +367,7 @@ impl Directory {
         let mut bytes = vec![0_u8; header_size + name_size + size_of::<u16>()];
         let handle_offset = file_rename_handle_offset();
         unsafe {
-            bytes[0] = 0;
+            bytes[0] = u8::from(replace);
             bytes
                 .as_mut_ptr()
                 .add(handle_offset)
@@ -362,6 +434,7 @@ impl Directory {
     }
 
     /// Open an existing non-directory leaf with DELETE access (reparse-safe).
+    #[cfg(test)]
     pub fn open_existing_file_for_delete(&self, name: &[u16]) -> io::Result<File> {
         // Share DELETE so an existing non-exclusive reader does not block overwrite
         // of a pre-existing conflict leaf. Create-time handles still omit DELETE
@@ -380,6 +453,7 @@ impl Directory {
     /// Delete a regular file leaf by name via handle disposition (not path `remove_file`).
     ///
     /// Refuses reparse points. Treats `NotFound` as success (raced free path).
+    #[cfg(test)]
     pub fn delete_file_by_name(&self, name: &[u16]) -> io::Result<()> {
         let file = match self.open_existing_file_for_delete(name) {
             Ok(file) => file,
@@ -425,21 +499,26 @@ impl Directory {
         open_path(
             Some(&self.current),
             name.to_vec(),
-            FILE_LIST_DIRECTORY | FILE_TRAVERSE | SYNCHRONIZE,
+            FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
             FILE_OPEN,
             FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
         )
-        .map(|file| self.with_child(file))
+        .and_then(|file| {
+            reject_handle_reparse(&file)?;
+            Ok(self.with_child(file))
+        })
     }
 
     fn open_existing_file(&self, name: &[u16]) -> io::Result<File> {
-        open_path(
+        let file = open_path(
             Some(&self.current),
             name.to_vec(),
             0x8000_0000 | SYNCHRONIZE,
             FILE_OPEN,
             FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
-        )
+        )?;
+        reject_handle_reparse(&file)?;
+        Ok(file)
     }
 
     fn with_child(&self, file: File) -> Self {
@@ -480,6 +559,17 @@ pub fn cleanup_created(entries: &mut Vec<CreatedEntry>) -> Vec<String> {
 fn is_handle_reparse(metadata: &std::fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
         || (metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
+}
+
+fn reject_handle_reparse(file: &File) -> io::Result<()> {
+    if is_handle_reparse(&file.metadata()?) {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Opened path is a reparse point.",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn mark_handle_for_delete(file: &File) -> io::Result<()> {
@@ -598,6 +688,135 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn publication_lab(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "archi-publish-{label}-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        root
+    }
+
+    fn stage(directory: &Directory, created: &mut Vec<CreatedEntry>, name: &str, bytes: &[u8]) {
+        let file = directory
+            .create_file(&name.encode_utf16().collect::<Vec<_>>(), created)
+            .unwrap();
+        file.as_ref().write_all(bytes).unwrap();
+        file.sync_all().unwrap();
+    }
+
+    #[test]
+    fn publication_no_clobber_and_directory_rejection_preserve_bytes() {
+        let root = publication_lab("no-clobber");
+        let directory = Directory::open_root(&root).unwrap();
+        let mut created = Vec::new();
+        stage(&directory, &mut created, "staging", b"new");
+        // Target appears after staging was created.
+        std::fs::write(root.join("target"), b"racer").unwrap();
+        let target: Vec<_> = "target".encode_utf16().collect();
+        assert!(directory.publish_file(&created[0], &target, false).is_err());
+        assert_eq!(std::fs::read(root.join("target")).unwrap(), b"racer");
+        std::fs::create_dir(root.join("folder")).unwrap();
+        assert!(directory
+            .publish_file(
+                &created[0],
+                &"folder".encode_utf16().collect::<Vec<_>>(),
+                true
+            )
+            .is_err());
+        assert!(cleanup_created(&mut created).is_empty());
+        assert!(!root.join("staging").exists());
+        drop(directory);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn junction_inserted_after_staging_cannot_redirect_publication() {
+        let root = publication_lab("junction");
+        let outside = root.join("outside");
+        let out = root.join("out");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::create_dir(&out).unwrap();
+        std::fs::write(outside.join("sentinel"), b"original").unwrap();
+        let directory = Directory::open_root(&out).unwrap();
+        let mut created = Vec::new();
+        stage(&directory, &mut created, "staging", b"new");
+        let target = out.join("target");
+        let status = std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(&target)
+            .arg(&outside)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "Cannot create test junction");
+        let name: Vec<_> = "target".encode_utf16().collect();
+        for replace in [false, true] {
+            assert!(directory.publish_file(&created[0], &name, replace).is_err());
+        }
+        assert!(Directory::open_root(&target).is_err());
+        assert!(cleanup_created(&mut created).is_empty());
+        assert_eq!(
+            std::fs::read(outside.join("sentinel")).unwrap(),
+            b"original"
+        );
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 1);
+        // Remove junction itself, never recurse through its target.
+        std::fs::remove_dir(target).unwrap();
+        drop(directory);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn duplicate_replacements_publish_in_order_and_partial_failure_keeps_committed_file() {
+        for fail_second in [false, true] {
+            let root = publication_lab("pending");
+            std::fs::write(root.join("target"), b"old").unwrap();
+            let directory = Directory::open_root(&root).unwrap();
+            let mut created = Vec::new();
+            let mut pending = Vec::new();
+            stage(&directory, &mut created, "first", b"first");
+            stage_replacement(
+                &mut pending,
+                &directory,
+                &created[0],
+                &"target".encode_utf16().collect::<Vec<_>>(),
+            );
+            stage(&directory, &mut created, "second", b"second");
+            let target = if fail_second { "folder" } else { "TARGET" };
+            if fail_second {
+                std::fs::create_dir(root.join(target)).unwrap();
+            }
+            stage_replacement(
+                &mut pending,
+                &directory,
+                &created[1],
+                &target.encode_utf16().collect::<Vec<_>>(),
+            );
+            assert_eq!(
+                publish_replacements(&mut pending, &mut created).is_err(),
+                fail_second
+            );
+            assert!(cleanup_created(&mut created).is_empty());
+            assert_eq!(
+                std::fs::read(root.join("target")).unwrap(),
+                if fail_second {
+                    b"first".as_slice()
+                } else {
+                    b"second".as_slice()
+                }
+            );
+            assert!(!root.join("first").exists());
+            assert!(!root.join("second").exists());
+            drop(directory);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
 
     #[test]
     fn retained_handles_block_replacement_and_cleanup_created_paths() {
