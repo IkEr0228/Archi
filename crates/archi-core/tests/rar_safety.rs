@@ -72,8 +72,7 @@ fn nested_rar_crc_failure_preserves_old_file_and_cleans_staging() {
 #[test]
 fn solid_rar_selective_decode_matches_full_decode() {
     let lab = Lab::new();
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/tests/fixtures/solid.rar");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/solid.rar");
     let info = archive::open_archive(&path, None).unwrap();
     let files: Vec<_> = info.entries.iter().filter(|e| !e.is_directory).collect();
     // Bundled solid fixture has one member; exercises solid decode, not skipped blocks.

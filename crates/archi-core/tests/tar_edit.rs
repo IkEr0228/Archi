@@ -1,9 +1,9 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions, EditOptions};
-use archi_backend_lib::tar_create::create_tar_archive;
-use archi_backend_lib::tar_edit::{
+use archi_core::archive::open_archive;
+use archi_core::models::{CompressionPreset, CreateFormat, CreateOptions, EditOptions};
+use archi_core::tar_create::create_tar_archive;
+use archi_core::tar_edit::{
     add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
 };
 use std::cell::Cell;
@@ -59,7 +59,7 @@ fn entry_names(archive: &Path) -> Vec<String> {
 }
 
 fn entry_bytes_via_extract(archive: &Path, member: &str) -> Vec<u8> {
-    use archi_backend_lib::extraction::{extract_any, FailOnConflict};
+    use archi_core::extraction::{extract_any, FailOnConflict};
     let dest = archive.parent().unwrap().join(format!(
         "extract-{}",
         std::time::SystemTime::now()

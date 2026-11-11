@@ -1,19 +1,14 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::extraction::{extract_any, FailOnConflict};
-use archi_backend_lib::format_detect::{detect_format, ArchiveFormat};
+use archi_core::archive::open_archive;
+use archi_core::extraction::{extract_any, FailOnConflict};
+use archi_core::format_detect::{detect_format, ArchiveFormat};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(if env!("CARGO_PKG_NAME") == "archi-core" {
-            "../../src-tauri"
-        } else {
-            "."
-        })
         .join("tests")
         .join("fixtures")
         .join(name)

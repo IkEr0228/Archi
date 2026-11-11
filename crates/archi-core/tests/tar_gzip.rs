@@ -1,8 +1,8 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::extraction::{extract_any, FailOnConflict};
-use archi_backend_lib::format_detect::{detect_format, ArchiveFormat};
+use archi_core::archive::open_archive;
+use archi_core::extraction::{extract_any, FailOnConflict};
+use archi_core::format_detect::{detect_format, ArchiveFormat};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::fs::{self, File};

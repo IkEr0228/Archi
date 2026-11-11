@@ -1,4 +1,4 @@
-use archi_backend_lib::conflict::{candidate_renamed_name, split_file_name, unique_renamed_path};
+use archi_core::conflict::{candidate_renamed_name, split_file_name, unique_renamed_path};
 use std::fs;
 
 mod common;

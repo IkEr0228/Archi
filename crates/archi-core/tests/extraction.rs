@@ -1,11 +1,11 @@
 mod common;
 
-use archi_backend_lib::extraction::{
+use archi_core::extraction::{
     extract_archive, normalize_entry_name, selection_includes_entry, validate_selection,
     FailOnConflict, ScriptedConflictResolver,
 };
-use archi_backend_lib::models::ConflictDecision;
-use archi_backend_lib::operations::OperationRegistry;
+use archi_core::models::ConflictDecision;
+use archi_core::operations::OperationRegistry;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -576,7 +576,7 @@ fn cancel_from_conflict_cleans_partials() {
 fn apply_to_all_skip_via_registry_policy() {
     // Simulate production: first conflict resolved with Skip+apply_to_all stores policy;
     // subsequent conflicts read the policy without another waiter round-trip.
-    use archi_backend_lib::extraction::ConflictResolver;
+    use archi_core::extraction::ConflictResolver;
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
@@ -591,17 +591,17 @@ fn apply_to_all_skip_via_registry_policy() {
             operation_id: &str,
             _entry_path: &str,
             _dest_path: &std::path::Path,
-        ) -> Result<ConflictDecision, archi_backend_lib::models::CommandError> {
+        ) -> Result<ConflictDecision, archi_core::models::CommandError> {
             if let Some(policy) = self.registry.peek_apply_policy(operation_id) {
                 return Ok(policy);
             }
             let conflict_id = format!("{operation_id}-conflict");
             self.registry
                 .install_conflict_waiter(operation_id, &conflict_id)
-                .map_err(|m| archi_backend_lib::models::CommandError::new("operation_failed", m))?;
+                .map_err(|m| archi_core::models::CommandError::new("operation_failed", m))?;
             self.registry
                 .recv_conflict_decision(operation_id, &conflict_id)
-                .map_err(|m| archi_backend_lib::models::CommandError::new("operation_failed", m))
+                .map_err(|m| archi_core::models::CommandError::new("operation_failed", m))
         }
     }
 

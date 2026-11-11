@@ -1,4 +1,4 @@
-use archi_backend_lib::security::{
+use archi_core::security::{
     assess_archive, safe_destination_path, validate_entry_path, ArchiveRiskInput,
 };
 

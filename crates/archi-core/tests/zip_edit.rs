@@ -1,8 +1,8 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::models::{EditOptions, EditStrategyPref};
-use archi_backend_lib::zip_edit::{
+use archi_core::archive::open_archive;
+use archi_core::models::{EditOptions, EditStrategyPref};
+use archi_core::zip_edit::{
     add_paths, create_folder, delete_entries, rename_entry, replace_file,
 };
 use std::cell::Cell;

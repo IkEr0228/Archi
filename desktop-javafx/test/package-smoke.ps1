@@ -2,7 +2,7 @@ param([Parameter(Mandatory)][string]$Application)
 $ErrorActionPreference = 'Stop'
 $Application = (Resolve-Path $Application).Path
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$fixture = Join-Path $root 'src-tauri/tests/fixtures/version.rar'
+$fixture = Join-Path $root 'crates/archi-core/tests/fixtures/version.rar'
 $launcher = Start-Process -FilePath $Application -ArgumentList ('"' + $fixture + '"') -WorkingDirectory $env:TEMP -PassThru
 $window = $null
 $workers = @()

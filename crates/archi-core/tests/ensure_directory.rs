@@ -1,6 +1,6 @@
 mod common;
 
-use archi_backend_lib::destination::ensure_directory_path;
+use archi_core::destination::ensure_directory_path;
 use std::fs;
 
 #[test]

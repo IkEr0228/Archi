@@ -1,10 +1,10 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::extraction::{extract_any, FailOnConflict};
-use archi_backend_lib::format_detect::{detect_format, ArchiveFormat};
-use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions};
-use archi_backend_lib::tar_create::create_tar_archive;
+use archi_core::archive::open_archive;
+use archi_core::extraction::{extract_any, FailOnConflict};
+use archi_core::format_detect::{detect_format, ArchiveFormat};
+use archi_core::models::{CompressionPreset, CreateFormat, CreateOptions};
+use archi_core::tar_create::create_tar_archive;
 use std::fs;
 use std::sync::atomic::AtomicBool;
 

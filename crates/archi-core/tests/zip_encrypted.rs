@@ -1,10 +1,10 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::extraction::{extract_any, FailOnConflict};
-use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions};
-use archi_backend_lib::testing::test_archive;
-use archi_backend_lib::zipper::create_zip_archive;
+use archi_core::archive::open_archive;
+use archi_core::extraction::{extract_any, FailOnConflict};
+use archi_core::models::{CompressionPreset, CreateFormat, CreateOptions};
+use archi_core::testing::test_archive;
+use archi_core::zipper::create_zip_archive;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;

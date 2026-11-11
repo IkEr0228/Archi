@@ -49,7 +49,7 @@ if ($Test) {
 if ($Smoke) {
     & "$java/java.exe" -ea "-Darchi.worker=$root/target/$profile/archi-worker.exe" "-Darchi.smoke.output=$PSScriptRoot/build" --module-path $modulePath --add-modules javafx.controls -cp "$gson;$classes" archi.FxSmokeTest
     if ($LASTEXITCODE) { throw 'JavaFX smoke test failed' }
-    & "$java/java.exe" -ea "-Darchi.worker=$root/target/$profile/archi-worker.exe" "-Darchi.smoke.output=$PSScriptRoot/build" --module-path $modulePath --add-modules javafx.controls -cp "$gson;$classes" archi.FxSmokeTest "$root/src-tauri/tests/fixtures/comment-hpw-password.rar"
+    & "$java/java.exe" -ea "-Darchi.worker=$root/target/$profile/archi-worker.exe" "-Darchi.smoke.output=$PSScriptRoot/build" --module-path $modulePath --add-modules javafx.controls -cp "$gson;$classes" archi.FxSmokeTest "$root/crates/archi-core/tests/fixtures/comment-hpw-password.rar"
     if ($LASTEXITCODE) { throw 'JavaFX password smoke test failed' }
 }
 if ($Run) {

@@ -1,8 +1,8 @@
 mod common;
 
-use archi_backend_lib::extraction::{extract_archive, FailOnConflict};
-use archi_backend_lib::models::{CompressionPreset, CreateOptions};
-use archi_backend_lib::zipper::create_zip_archive;
+use archi_core::extraction::{extract_archive, FailOnConflict};
+use archi_core::models::{CompressionPreset, CreateOptions};
+use archi_core::zipper::create_zip_archive;
 use std::cell::Cell;
 use std::fs::{self, File};
 use std::io::Read;
@@ -26,7 +26,7 @@ fn temporary_archives(root: &Path) -> Vec<PathBuf> {
 
 fn options(compression: CompressionPreset, include_root: bool, overwrite: bool) -> CreateOptions {
     CreateOptions {
-        format: archi_backend_lib::models::CreateFormat::Zip,
+        format: archi_core::models::CreateFormat::Zip,
         compression,
         include_root,
         overwrite,

@@ -445,8 +445,7 @@ fn rar_wrong_password_preserves_existing_file_and_removes_staging() {
     let destination = lab.0.join("out");
     fs::create_dir(&destination).unwrap();
     fs::write(destination.join(".gitignore"), b"original").unwrap();
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/tests/fixtures/crypted.rar");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/crypted.rar");
     let result = extract_any(
         &path,
         &destination,
@@ -472,8 +471,7 @@ fn rar_overwrite_success_and_cancel_preserve_expected_file() {
         let destination = lab.0.join("out");
         fs::create_dir(&destination).unwrap();
         fs::write(destination.join("VERSION"), b"original").unwrap();
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../src-tauri/tests/fixtures/version.rar");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/version.rar");
         let cancelled = AtomicBool::new(false);
         let resolver = ScriptedConflictResolver::new(vec![ConflictDecision::Overwrite]);
         let cancel_resolver = CancelOnOverwrite(&cancelled);

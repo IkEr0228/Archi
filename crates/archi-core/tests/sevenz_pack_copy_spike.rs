@@ -5,11 +5,11 @@
 
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions};
-use archi_backend_lib::sevenz_edit::delete_entries;
-use archi_backend_lib::sevenz_format::create_sevenz_archive;
-use archi_backend_lib::sevenz_pack_copy::{
+use archi_core::archive::open_archive;
+use archi_core::models::{CompressionPreset, CreateFormat, CreateOptions};
+use archi_core::sevenz_edit::delete_entries;
+use archi_core::sevenz_format::create_sevenz_archive;
+use archi_core::sevenz_pack_copy::{
     delete_entries_pack_copy, is_pack_copy_eligible, last_pack_copy_stats,
     pack_copy_delete_to_temp_only,
 };
@@ -65,7 +65,7 @@ fn entry_names(archive: &Path) -> Vec<String> {
 }
 
 fn entry_bytes_via_extract(archive: &Path, member: &str) -> Vec<u8> {
-    use archi_backend_lib::extraction::{extract_any, FailOnConflict};
+    use archi_core::extraction::{extract_any, FailOnConflict};
     let dest = archive.parent().unwrap().join(format!(
         "extract-{}",
         std::time::SystemTime::now()

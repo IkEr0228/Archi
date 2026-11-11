@@ -1,6 +1,6 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
+use archi_core::archive::open_archive;
 use std::fs::File;
 use std::io::Write;
 use zip::write::SimpleFileOptions;

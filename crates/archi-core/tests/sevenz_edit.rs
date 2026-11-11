@@ -1,11 +1,11 @@
 mod common;
 
-use archi_backend_lib::archive::open_archive;
-use archi_backend_lib::models::{CompressionPreset, CreateFormat, CreateOptions, EditOptions};
-use archi_backend_lib::sevenz_edit::{
+use archi_core::archive::open_archive;
+use archi_core::models::{CompressionPreset, CreateFormat, CreateOptions, EditOptions};
+use archi_core::sevenz_edit::{
     add_paths, create_folder, delete_entries, move_entries, rename_entry, replace_file,
 };
-use archi_backend_lib::sevenz_format::create_sevenz_archive;
+use archi_core::sevenz_format::create_sevenz_archive;
 use sevenz_rust2::Password;
 use std::cell::Cell;
 use std::fs;
@@ -61,7 +61,7 @@ fn entry_names(archive: &Path) -> Vec<String> {
 }
 
 fn entry_bytes_via_extract(archive: &Path, member: &str) -> Vec<u8> {
-    use archi_backend_lib::extraction::{extract_any, FailOnConflict};
+    use archi_core::extraction::{extract_any, FailOnConflict};
     let dest = archive.parent().unwrap().join(format!(
         "extract-{}",
         std::time::SystemTime::now()
@@ -99,7 +99,7 @@ fn temporary_edit_archives(root: &Path) -> Vec<PathBuf> {
 }
 
 /// Archi Fast non-solid fixtures are pack-copy eligible; product path reports "pack_copy".
-fn assert_pack_copy_strategy(summary: &archi_backend_lib::models::EditSummary) {
+fn assert_pack_copy_strategy(summary: &archi_core::models::EditSummary) {
     assert_eq!(
         summary.strategy_used.as_deref(),
         Some("pack_copy"),

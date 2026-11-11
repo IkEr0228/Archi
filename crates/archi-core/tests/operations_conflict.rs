@@ -1,5 +1,5 @@
-use archi_backend_lib::models::ConflictDecision;
-use archi_backend_lib::operations::OperationRegistry;
+use archi_core::models::ConflictDecision;
+use archi_core::operations::OperationRegistry;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;

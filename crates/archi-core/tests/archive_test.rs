@@ -1,6 +1,6 @@
 mod common;
 
-use archi_backend_lib::testing::test_archive;
+use archi_core::testing::test_archive;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[test]
