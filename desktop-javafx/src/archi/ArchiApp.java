@@ -36,7 +36,8 @@ public final class ArchiApp extends Application {
     private final ExecutorService queries = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("archive-query").factory());
     private final AtomicLong queryRevision = new AtomicLong();
     private ArchiveModel archive;
-    private String parent = "/", secret, operation;
+    private String parent = "/", operation;
+    private char[] secret;
     private String startupAction, startupPath;
     private boolean busy, closed, riskAcknowledged;
     private long sessionRevision;
@@ -215,7 +216,7 @@ public final class ArchiApp extends Application {
             archive = model;
             if (!refresh) { parent = "/"; search.clear(); extension.clear(); type.setValue("All"); table.getSelectionModel().clearSelection(); }
             if (!parent.equals("/") && model.entries.stream().noneMatch(e -> e.directory() && e.path().equals(parent))) parent = "/";
-            secret = remember ? password : null; riskAcknowledged = false;
+            setSecret(remember ? password : null); riskAcknowledged = false;
             stage.setTitle(Path.of(path).getFileName() + " — Archi");
             opened.setText("Open: " + Path.of(path).getFileName());
             loaded.setText("LOADED " + model.entries.size() + " ENTRIES.");
@@ -299,7 +300,7 @@ public final class ArchiApp extends Application {
         } else choose.run();
     }
 
-    private JsonObject archiveArgs() { var args = new JsonObject(); args.addProperty("path", archive.path); if (secret != null) args.addProperty("password", secret); return args; }
+    private JsonObject archiveArgs() { var args = new JsonObject(); args.addProperty("path", archive.path); if (secret != null) args.addProperty("password", new String(secret)); return args; }
     private void test() { if (archive != null && !busy) runOperation("test", archiveArgs(), null); }
 
     private void runOperation(String command, JsonObject args, String suppliedPassword) {
@@ -315,7 +316,7 @@ public final class ArchiApp extends Application {
             busy(false, error == null ? "Completed." : "Operation stopped.");
             if (error != null) {
                 if (!command.equals("create") && passwordError(error)) passwordDialog(archive.path, "Archive is password-protected", (command.equals("edit") ? args.getAsJsonObject("options").has("password") : args.has("password")) ? "Invalid password. Please try again." : null, (password, remember) -> {
-                    secret = remember ? password : null;
+                    setSecret(remember ? password : null);
                     runOperation(command, args, password);
                 });
                 else if (!errorCode(error).equals("cancelled")) showError(error);
@@ -463,7 +464,7 @@ public final class ArchiApp extends Application {
 
     private JsonObject editArgs(String kind) {
         var args = new JsonObject(); args.addProperty("path", archive.path);
-        var options = new JsonObject(); if (secret != null) options.addProperty("password", secret);
+        var options = new JsonObject(); if (secret != null) options.addProperty("password", new String(secret));
         options.addProperty("strategy", switch (strategy.getValue()) { case "Prefer fast" -> "preferFast"; case "Prefer compact" -> "preferCompact"; default -> "auto"; });
         args.add("options", options); var action = new JsonObject(); action.addProperty("kind", kind); args.add("action", action);
         return args;
@@ -680,5 +681,9 @@ public final class ArchiApp extends Application {
     private static Button action(String text, Runnable action) { return button(text, action); }
     private static Button unavailable(String text) { Button b = new Button(text); b.setDisable(true); b.setTooltip(new Tooltip("Not migrated yet")); return b; }
     private static Button windowButton(String description, String style, Runnable action) { var b = button("", action); b.setAccessibleText(description); b.setTooltip(new Tooltip(description)); b.getStyleClass().addAll("window-button", style); return b; }
-    @Override public void stop() { closed = true; secret = null; queries.shutdownNow(); if (worker != null) worker.close(); }
+    private void setSecret(String value) {
+        if (secret != null) java.util.Arrays.fill(secret, '\0');
+        secret = value == null ? null : value.toCharArray();
+    }
+    @Override public void stop() { closed = true; setSecret(null); queries.shutdownNow(); if (worker != null) worker.close(); }
 }

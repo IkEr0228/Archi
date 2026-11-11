@@ -42,6 +42,7 @@ pub fn test_archive(
     password: Option<String>,
     emit: impl FnMut(OperationProgress),
 ) -> Result<TestArchiveSummary, CommandError> {
+    let password = zeroize::Zeroizing::new(password);
     if operation_id.is_empty() {
         return Err(test_error("invalid_operation", "Operation ID is empty."));
     }
@@ -49,22 +50,39 @@ pub fn test_archive(
         return Err(test_error("not_found", "Source archive does not exist."));
     }
 
-    match detect_format(archive_path)? {
-        ArchiveFormat::Zip => test_zip(archive_path, operation_id, cancelled, password, emit),
-        ArchiveFormat::Tar => test_tar_plain(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::TarGz => test_tar_gz(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::TarBz2 => test_tar_bz2(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::TarXz => test_tar_xz(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::Gzip => test_single_stream_gzip(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::Bzip2 => {
-            test_single_stream_bzip2(archive_path, operation_id, cancelled, emit)
-        }
-        ArchiveFormat::Xz => test_single_stream_xz(archive_path, operation_id, cancelled, emit),
-        ArchiveFormat::SevenZ => test_sevenz(archive_path, operation_id, cancelled, password, emit),
-        ArchiveFormat::Rar => Err(test_error(
-            "unsupported_format",
-            "Archive testing is not supported for RAR archives.",
-        )),
+    match detect_format(archive_path) {
+        Err(error) => Err(error),
+        Ok(format) => match format {
+            ArchiveFormat::Zip => test_zip(
+                archive_path,
+                operation_id,
+                cancelled,
+                password.as_deref(),
+                emit,
+            ),
+            ArchiveFormat::Tar => test_tar_plain(archive_path, operation_id, cancelled, emit),
+            ArchiveFormat::TarGz => test_tar_gz(archive_path, operation_id, cancelled, emit),
+            ArchiveFormat::TarBz2 => test_tar_bz2(archive_path, operation_id, cancelled, emit),
+            ArchiveFormat::TarXz => test_tar_xz(archive_path, operation_id, cancelled, emit),
+            ArchiveFormat::Gzip => {
+                test_single_stream_gzip(archive_path, operation_id, cancelled, emit)
+            }
+            ArchiveFormat::Bzip2 => {
+                test_single_stream_bzip2(archive_path, operation_id, cancelled, emit)
+            }
+            ArchiveFormat::Xz => test_single_stream_xz(archive_path, operation_id, cancelled, emit),
+            ArchiveFormat::SevenZ => test_sevenz(
+                archive_path,
+                operation_id,
+                cancelled,
+                password.as_deref(),
+                emit,
+            ),
+            ArchiveFormat::Rar => Err(test_error(
+                "unsupported_format",
+                "Archive testing is not supported for RAR archives.",
+            )),
+        },
     }
 }
 
@@ -97,7 +115,7 @@ fn test_zip(
     zip_path: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
-    password: Option<String>,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<TestArchiveSummary, CommandError> {
     let file = File::open(zip_path)
@@ -128,7 +146,7 @@ fn test_zip(
             .by_index_raw(index)
             .map(|e| e.encrypted())
             .unwrap_or(false);
-        let mut entry = match password.as_deref().filter(|_| entry_encrypted) {
+        let mut entry = match password.filter(|_| entry_encrypted) {
             Some(pw) => archive
                 .by_index_decrypt(index, pw.as_bytes())
                 .map_err(|error| {
@@ -441,14 +459,12 @@ fn test_sevenz(
     path: &Path,
     operation_id: &str,
     cancelled: &AtomicBool,
-    password: Option<String>,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<TestArchiveSummary, CommandError> {
     use sevenz_rust2::{ArchiveReader, Password};
 
-    let pw = password
-        .as_deref()
-        .map_or_else(Password::empty, Password::new);
+    let pw = password.map_or_else(Password::empty, Password::new);
     let mut reader = ArchiveReader::open(path, pw).map_err(|e| {
         let msg = e.to_string().to_ascii_lowercase();
         if msg.contains("password") || msg.contains("encrypt") {

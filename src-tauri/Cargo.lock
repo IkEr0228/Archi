@@ -104,6 +104,7 @@ dependencies = [
  "unrar",
  "unrar_sys",
  "xz2",
+ "zeroize",
  "zip",
 ]
 

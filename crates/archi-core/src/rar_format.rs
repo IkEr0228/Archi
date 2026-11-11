@@ -227,7 +227,7 @@ pub fn extract_rar(
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
     conflict_resolver: &dyn ConflictResolver,
-    password: Option<String>,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
     if operation_id.is_empty() {
@@ -251,7 +251,7 @@ pub fn extract_rar(
 
     // Pre-scan listing to validate selection and compute total files
     let (names, selection_index) = {
-        let arch = match password.as_deref() {
+        let arch = match password {
             Some(pw) if !pw.is_empty() => Archive::with_password(archive_path, pw),
             _ => Archive::new(archive_path),
         };
@@ -286,7 +286,7 @@ pub fn extract_rar(
     }
     .max(1);
 
-    let archive = match password.as_deref() {
+    let archive = match password {
         Some(pw) if !pw.is_empty() => Archive::with_password(archive_path, pw),
         _ => Archive::new(archive_path),
     };
@@ -435,7 +435,7 @@ pub fn extract_rar(
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
     conflict_resolver: &dyn ConflictResolver,
-    password: Option<String>,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
     if operation_id.is_empty() {
@@ -453,7 +453,7 @@ pub fn extract_rar(
     let destination = destination
         .canonicalize()
         .map_err(|e| rar_error("invalid_destination", e.to_string()))?;
-    let info = open_rar(archive_path, password.as_deref())?;
+    let info = open_rar(archive_path, password)?;
     let selection = if let Some(paths) = selected_paths {
         if paths.is_empty() {
             return Err(rar_error(
@@ -483,7 +483,7 @@ pub fn extract_rar(
                     .is_none_or(|s| s.includes_normalized(&e.path))
         })
         .count() as u64;
-    let mut reader = crate::rar_stream::Reader::open(archive_path, password.as_deref())?;
+    let mut reader = crate::rar_stream::Reader::open(archive_path, password)?;
     let root = crate::windows_fs::Directory::open_root(&destination)
         .map_err(|e| rar_error("unsafe_destination", e.to_string()))?;
     let mut extracted_files = 0;

@@ -304,17 +304,18 @@ pub fn extract_transactional(
     conflict_resolver: &dyn ConflictResolver,
     emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
+    let password = zeroize::Zeroizing::new(password);
     if cancelled.load(Ordering::Relaxed) {
         return Err(cancelled_error());
     }
     if !destination.is_dir() {
-        return extract_any(
+        return extract_any_with_password(
             archive_path,
             destination,
             operation_id,
             cancelled,
             selected_paths,
-            password,
+            password.as_deref(),
             conflict_resolver,
             emit,
         );
@@ -328,13 +329,13 @@ pub fn extract_transactional(
         transaction_error(format!("Cannot create extraction transaction: {error}"))
     })?;
 
-    let result = extract_any(
+    let result = extract_any_with_password(
         archive_path,
         &destination,
         operation_id,
         cancelled,
         selected_paths,
-        password,
+        password.as_deref(),
         conflict_resolver,
         emit,
     );
@@ -729,8 +730,31 @@ pub fn extract_any(
     conflict_resolver: &dyn ConflictResolver,
     emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
+    let password = zeroize::Zeroizing::new(password);
+    extract_any_with_password(
+        archive_path,
+        destination,
+        operation_id,
+        cancelled,
+        selected_paths,
+        password.as_deref(),
+        conflict_resolver,
+        emit,
+    )
+}
+
+fn extract_any_with_password(
+    archive_path: &Path,
+    destination: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    selected_paths: Option<&[String]>,
+    password: Option<&str>,
+    conflict_resolver: &dyn ConflictResolver,
+    emit: impl FnMut(OperationProgress),
+) -> Result<OperationSummary, CommandError> {
     match detect_format(archive_path)? {
-        ArchiveFormat::Zip => extract_archive(
+        ArchiveFormat::Zip => extract_archive_with_password(
             archive_path,
             destination,
             operation_id,
@@ -833,6 +857,29 @@ pub fn extract_archive(
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
     password: Option<String>,
+    conflict_resolver: &dyn ConflictResolver,
+    emit: impl FnMut(OperationProgress),
+) -> Result<OperationSummary, CommandError> {
+    let password = zeroize::Zeroizing::new(password);
+    extract_archive_with_password(
+        zip_path,
+        destination,
+        operation_id,
+        cancelled,
+        selected_paths,
+        password.as_deref(),
+        conflict_resolver,
+        emit,
+    )
+}
+
+fn extract_archive_with_password(
+    zip_path: &Path,
+    destination: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    selected_paths: Option<&[String]>,
+    password: Option<&str>,
     conflict_resolver: &dyn ConflictResolver,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {

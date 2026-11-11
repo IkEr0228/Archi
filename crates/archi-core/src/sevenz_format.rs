@@ -255,7 +255,7 @@ pub fn extract_sevenz(
     cancelled: &AtomicBool,
     selected_paths: Option<&[String]>,
     conflict_resolver: &dyn ConflictResolver,
-    password: Option<String>,
+    password: Option<&str>,
     mut emit: impl FnMut(OperationProgress),
 ) -> Result<OperationSummary, CommandError> {
     if operation_id.is_empty() {
@@ -277,7 +277,7 @@ pub fn extract_sevenz(
         )
     })?;
 
-    let pw = password.as_deref().map_or(Password::empty(), Password::new);
+    let pw = password.map_or_else(Password::empty, Password::new);
     let mut reader = ArchiveReader::open(path, pw).map_err(map_sz_error)?;
     let names: Vec<String> = reader
         .archive()

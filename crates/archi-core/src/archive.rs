@@ -16,6 +16,7 @@ use zip::ZipArchive;
 
 /// Opens an archive (zip / tar / compressed tar / single-stream) and returns listing metadata.
 pub fn open_archive(path: &Path, password: Option<String>) -> Result<ArchiveInfo, CommandError> {
+    let password = zeroize::Zeroizing::new(password);
     if !path.is_file() {
         return Err(CommandError::new(
             "not_found",
@@ -23,24 +24,27 @@ pub fn open_archive(path: &Path, password: Option<String>) -> Result<ArchiveInfo
         ));
     }
 
-    match detect_format(path)? {
-        ArchiveFormat::Zip => open_zip_archive(path, password.as_deref()),
-        ArchiveFormat::Tar => open_tar(path),
-        ArchiveFormat::TarGz => open_tar_gz(path),
-        ArchiveFormat::Gzip => open_gzip(path),
-        ArchiveFormat::TarBz2 => open_tar_bz2(path),
-        ArchiveFormat::Bzip2 => open_bzip2(path),
-        ArchiveFormat::TarXz => open_tar_xz(path),
-        ArchiveFormat::Xz => open_xz(path),
-        ArchiveFormat::SevenZ => {
-            let password = match password {
-                Some(pw) => Password::new(&pw),
-                None => Password::empty(),
-            };
-            open_sevenz(path, password)
-        }
-        ArchiveFormat::Rar => open_rar(path, password.as_deref()),
-    }
+    let result = match detect_format(path) {
+        Err(error) => Err(error),
+        Ok(format) => match format {
+            ArchiveFormat::Zip => open_zip_archive(path, password.as_deref()),
+            ArchiveFormat::Tar => open_tar(path),
+            ArchiveFormat::TarGz => open_tar_gz(path),
+            ArchiveFormat::Gzip => open_gzip(path),
+            ArchiveFormat::TarBz2 => open_tar_bz2(path),
+            ArchiveFormat::Bzip2 => open_bzip2(path),
+            ArchiveFormat::TarXz => open_tar_xz(path),
+            ArchiveFormat::Xz => open_xz(path),
+            ArchiveFormat::SevenZ => {
+                let password = password
+                    .as_deref()
+                    .map_or_else(Password::empty, Password::new);
+                open_sevenz(path, password)
+            }
+            ArchiveFormat::Rar => open_rar(path, password.as_deref()),
+        },
+    };
+    result
 }
 
 fn zip_method_label(method: zip::CompressionMethod) -> String {

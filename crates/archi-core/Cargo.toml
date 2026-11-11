@@ -16,6 +16,7 @@ xz2 = "0.1"
 sevenz-rust2 = { path = "../../vendor/sevenz-rust2", version = "0.21", default-features = false, features = ["compress", "util", "aes256"] }
 ahash = { version = "0.8", default-features = false, features = ["std"] }
 unrar = "0.5.8"
+zeroize = "1.8"
 
 [target.'cfg(windows)'.dependencies]
 unrar_sys = "=0.5.8"

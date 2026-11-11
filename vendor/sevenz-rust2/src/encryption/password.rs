@@ -15,6 +15,14 @@ use crate::ByteWriter;
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Password(Vec<u8>);
 
+impl Drop for Password {
+    fn drop(&mut self) {
+        for byte in &mut self.0 {
+            *byte = 0;
+        }
+    }
+}
+
 impl Password {
     /// Creates a new [`Password`] from the given password string.
     ///
