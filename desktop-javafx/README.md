@@ -1,7 +1,8 @@
-# JavaFX migration — working vertical slice
+# JavaFX desktop
 
 Windows x64, JDK 21+, Rust/MSVC toolchain. JavaFX uses `javafx.controls`, not WebView.
-Archive operations remain in Rust. Existing Tauri application is still available.
+Archive operations remain in Rust. JavaFX is the active desktop target; the old
+Tauri/Svelte application remains only as a temporary compatibility surface.
 
 ## Run
 
@@ -75,11 +76,14 @@ automation or pixel-perfect visual acceptance.
   encrypted 7z edit, encrypted ZIP rejection, and original-byte/temp cleanup checks
   for invalid mutations and immediate cancellation.
 
-## Not migrated / known limits
+## Known limits
 
-Multiwindow, cross-window/external drag-out, native snap and full accessibility parity
-are not complete. Unavailable toolbar actions are disabled.
-Existing public README/release status was not rewritten.
+Multiple JavaFX windows, staged external drag-out, native edge snap, drag-in, and
+accessibility roles/text are implemented. Cross-window archive-to-archive moves
+are still copy/extract workflows, not a single shared in-memory model.
+
+The legacy Tauri/Svelte tree remains until the final parity gate and clean release
+verification. It is not the active release UI.
 
 Encrypted ZIP edits are deliberately disabled: the engine's ZIP editor does not
 preserve encryption. Encrypted 7z edits remain supported with password retry.

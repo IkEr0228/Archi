@@ -1,55 +1,69 @@
 # Development guidelines
 
-Coding and security conventions for Archi contributors.
+## Architecture
 
-## Project structure
+Archi has three active migration layers:
 
-- **Goal:** Windows archive manager with a Tauri/Svelte UI.
-- Keep UI components modular under `src/components`.
-- Keep format and I/O logic modular under `src-tauri/src`.
+- `crates/archi-core`: Rust archive model, format dispatch, validation,
+  extraction, creation, editing, conflicts, and security policy.
+- `crates/archi-worker`: one long-lived Rust process using version-1 NDJSON over
+  stdin/stdout. Frames are bounded to 1 MiB; listing responses batch at 256
+  entries; one archive operation runs at a time.
+- `desktop-javafx`: JavaFX controls and window lifecycle. It communicates with
+  the worker over pipes and does not use JNI or WebView.
+
+`src-tauri` and `src` are legacy compatibility surfaces during the final cleanup
+phase. New product behavior belongs in the Rust core/worker and JavaFX shell.
 
 ## Commands
 
 ```powershell
-npm run tauri dev
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
-npm run test:frontend
+$env:JAVA_HOME = 'C:\Program Files\Java\jdk-21.0.10'
+cargo test --workspace --offline --locked --lib --bins --tests
+cargo test --manifest-path src-tauri/Cargo.toml --offline --locked
+npm run check
+.\desktop-javafx\build.ps1 -Test -Smoke
+.\desktop-javafx\package.ps1 -Verify
 ```
 
-## Naming
+Use `cargo fmt -p archi-core -p archi-worker -- --check` for touched Rust
+packages. Vendor formatting differences are tracked separately and should not be
+mass-reformatted during feature work.
 
-- **Svelte components:** PascalCase (e.g. `ArchiveTable.svelte`)
-- **TypeScript / JavaScript:** camelCase
-- **Rust:** snake_case
-- **CSS:** two-space indentation
+## Security rules
 
-## Security (required)
+1. Validate every archive member path before filesystem use; reject traversal,
+   absolute paths, drive paths, UNC paths, device names, and invalid components.
+2. Never execute archived files or automatically open extracted content.
+3. Do not follow symlinks or Windows reparse points during extraction or source
+   traversal. Preserve the Windows handle-pinned path where applicable.
+4. Use same-directory staging, synchronization, and atomic publication for
+   replace operations. Keep rollback semantics explicit: normal-failure safe,
+   not crash-safe.
+5. Keep passwords owned at operation boundaries in zeroizing buffers where the
+   API permits. Do not log passwords or persist them in settings.
+6. Preserve archive capability policy: encrypted ZIP editing stays disabled,
+   encrypted 7z editing stays supported, RAR stays read/extract-only, and TAR
+   encryption stays disabled.
+7. Treat user-controlled paths and worker JSON as untrusted input. Bound frame
+   sizes, batch sizes, operation IDs, and concurrent operations.
 
-1. **Path validation:** Validate all archive entry paths from untrusted input; prevent ZIP Slip and `../` traversal.
-2. **Absolute paths:** Reject absolute archive entry paths.
-3. **Execution:** Never execute archived files or automatically open extracted contents.
-4. **Errors:** Do not use `unwrap()` / `expect()` on user-controlled Rust input; return readable errors.
-5. **No link traversal:** Do not follow archive symlinks, filesystem symlinks, or Windows reparse points while extracting or reading creation sources.
-6. **Creation containment:** Reject output archives that equal a source or sit inside a source directory, including temporary outputs.
+## JavaFX rules
 
-## Archive IPC and operations
+- Keep blocking archive work in Rust worker operations; never run codecs on the
+  FX thread.
+- Keep modal focus restoration, keyboard navigation, accessible roles/text, and
+  disabled capability controls intact.
+- External drag-out must stage files through Rust extraction, clean temporary
+  files after bounded retention, and support cancellation/password retry.
+- A new window owns its worker, executor, password session, and staging state;
+  closing one window must not terminate siblings.
 
-- Return typed, serializable Rust structs from Tauri commands (not JSON strings for IPC).
-- Run blocking archive I/O only inside `tauri::async_runtime::spawn_blocking` at the command boundary.
-- Long operations use a unique operation ID, rate-limited progress events, and one final state.
-- Register an operation before work starts and remove it on every completion path so cancellation state cannot leak.
-- Treat backend capability flags as the UI source of truth; unavailable actions stay disabled with a clear reason.
+## Change discipline
 
-## Coding standards
-
-- Prefer small modules over single-file “god” logic.
-- Avoid unnecessary dependencies.
-- Prefer Svelte 5 runes (`$state`, `$derived`, `$effect`) where they fit.
-- Use Conventional Commits (e.g. `feat: …`, `fix(extract): …`); subject ≤ 50 characters when practical.
-
-## What not to commit
-
-- Generated archives, benchmark output, build output (`target/`, `build/`, `node_modules/`)
-- Local scratch notes and temporary tooling output (see `.gitignore`)
+- Follow surrounding module boundaries; avoid new dependencies unless required.
+- Add a focused assertion/test for non-trivial branches and security behavior.
+- Run the relevant staged suite after each phase.
+- Commit each completed phase separately using Conventional Commits.
+- Never include unrelated untracked files, build output, archives, or generated
+  assets in a phase commit.

@@ -1,119 +1,60 @@
-# Archi development status
+# Archi status
 
-> [!CAUTION]
-> **PROJECT STATUS: ABANDONED / UNMAINTAINED**  
-> Проект закрыт и заморожен. Разработка и поддержка прекращены. Скачивание и использование исключительно на свой страх и риск.
+**Active branch:** `Revive`
+**Active desktop:** JavaFX + Rust worker
+**License:** MIT
 
-**Status:** 🛑 **Abandoned**  
-**Last updated:** 2026-09-11  
-**Branch:** `master`  
-**Latest release:** **v0.4.0** (Final / Unmaintained)  
-**License:** MIT (see root `LICENSE`)  
-**Repository:** https://github.com/IkEr0228/Archi
+## Migration phases
 
-## Phase overview
-
-| Phase | Theme | Status |
-| --- | --- | --- |
-| **Phase 1** | ZIP safety, cancel/progress, risk gate, virtualization | **Done** |
-| **Phase 2** | Extract modes, conflicts, search/filter/sort, test/properties, create options + DnD | **Done** |
-| **Phase 3** | Formats, ZIP edit, CLI, multi-format create | **Done** |
-| **Phase 3.5** | File associations / Explorer (opt-in) | **Done** |
-| **Phase 4** | Incremental edit (ZIP append/logical delete, 7z pack-copy, TAR stream), in-archive DnD, Edit mode UI | **Done (v0.2.0)** |
-| **Phase 4.5** | Encrypted archives (AES-256 ZIP/7z), session password reuse | **Done (v0.2.1)** |
-| **Phase 5** | Native Drag-and-Drop extraction to Explorer/Desktop, unified internal/external DnD | **Done (v0.2.2)** |
-| **Phase 6** | Native RAR support (read/extract), engine optimizations (mimalloc, ahash, IPC payload), DnD performance | **Done (v0.3.0)** |
-| **Phase 7** | Multi-window architecture (Ctrl+N), cross-window Drag & Drop, window title synchronization, cascading layout | **Done (v0.4.0)** |
-
-## What works today
-
-- **Drag-and-Drop:** drag files and folders directly out of the open archive into Windows Explorer, Desktop, or other apps (Windows OLE `CF_HDROP`, speculative pre-staging on pointerdown, real 32x32 drag preview icon, AES-256 decrypt, background cleanup); drop external files into the active virtual folder; drag entries into internal folders.
-- **RAR support (read/extract):** open, list, search/filter/sort, and extract RAR4 and RAR5 archives via static official `unrar` library; encrypted archives with password prompt; read-only safety (in-archive editing disabled for license compliance).
-- **ZIP:** open, list, search/filter/sort, extract (modes + conflicts), create, test, properties, edit (append/logical delete/rebuild), in-archive DnD, Explorer drop-to-folder. Codecs: Stored + Deflate.
-- **Create formats (dropdown order):** ZIP, **7z**, TAR, TAR.GZ, TAR.BZ2, TAR.XZ (7z defaults to Max / LZMA2-9).
-- **TAR family + 7z:** open, list, extract, **test**, **edit** (stream rebuild / pack-copy / solid repack fallback). Single-stream gz/bz2/xz: open/list/extract/**test** only.
-- **Edit mode:** Auto / Fast / Compact toolbar control + Compact archive action.
-- **CLI:** `archi.exe path\to\archive`; single-instance forwards a second launch to the first process.
-- **File associations:** opt-in per-user (HKCU) via toolbar **Associations** (includes RAR).
-- **Not enabled:** RAR creation/compression (proprietary/license prohibited), single-stream create, ZPAQ.
-
-## Docs map
-
-| File | Role |
+| Phase | Status |
 | --- | --- |
-| **`docs/STATUS.md`** | This status snapshot |
-| `docs/architecture/` | Roadmap and architecture notes |
-| `docs/DEVELOPMENT.md` | Coding and security conventions |
-| `README.md` | User-facing overview and capability matrix |
-| `CONTRIBUTING.md` | How to contribute |
-| `CODE_OF_CONDUCT.md` | Community code of conduct |
-| `SECURITY.md` | Vulnerability reporting |
+| Rust `archi-core` extraction of archive logic | Done |
+| Long-lived NDJSON Rust worker and JavaFX vertical slice | Done |
+| Transactional extraction and rollback | Done |
+| HKCU associations, Explorer verbs, installer, `--extract-here` | Done |
+| Password lifetime hardening | Done with documented transient-copy limits |
+| JavaFX snap, accessibility, drag-in | Done |
+| JavaFX multiple windows and staged external drag-out | Done |
+| Root/release documentation rewrite | Done |
+| Legacy Tauri/Svelte/WebView removal | Pending parity gate and clean release verification |
 
-## Build
+## Current capabilities
+
+- ZIP, 7z, RAR read/extract, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, BZ2, and XZ
+  open/list/extract/test paths as supported by each codec.
+- ZIP/7z/TAR-family creation and capability-aware editing.
+- Encrypted ZIP/7z reads and AES-256 creation. Encrypted ZIP editing is disabled;
+  encrypted 7z editing is supported; RAR is read/extract-only.
+- Selection, search, filtering, sorting, progress, cancellation, conflict
+  resolution, warning acknowledgement, properties, and compact/rebuild actions.
+- JavaFX file drop-in, staged file drag-out, multiple windows, edge snap, modal
+  focus restoration, keyboard shortcuts, and accessibility metadata.
+- Current-user Windows integration without administrator privileges.
+
+## Known limits
+
+- Transaction rollback is not crash/power-loss safe and cannot guard against
+  concurrent external destination mutation.
+- Non-Windows extraction does not provide the Windows handle-pinned no-reparse
+  guarantee; parent symlink races remain a known limitation.
+- Password zeroization covers owned operation/session boundaries, not every
+  transient Java `String`, Gson JSON object, or codec-internal buffer.
+- `cargo test --workspace --offline --locked` without target selection can hit an
+  existing linker defect in `examples/edit_bench`; staged tests use
+  `--lib --bins --tests`.
+- Full legacy deletion is intentionally deferred until parity and clean-package
+  gates pass. Do not treat `src-tauri` or `src` as the active desktop surface.
+
+## Verification commands
 
 ```powershell
-npm install
-npm run tauri build
+cargo test --workspace --offline --locked --lib --bins --tests
+cargo test --manifest-path src-tauri/Cargo.toml --offline --locked
+npm run check
+.\desktop-javafx\build.ps1 -Test -Smoke
+.\desktop-javafx\package.ps1 -Verify
 ```
 
-Release Rust profile: `src-tauri/Cargo.toml` → `[profile.release]` (LTO, strip, opt-level 3, panic=abort).  
-Frontend: Vite production minify.
-
-**Last measured release build (2026-09-06, v0.4.0):**
-
-| Artifact | Path | Size |
-| --- | --- | --- |
-| EXE | `src-tauri/target/release/archi.exe` | **7.65 MiB** (8 027 648 bytes) |
-| Installer (NSIS) | `src-tauri/target/release/bundle/nsis/archi_0.4.0_x64-setup.exe` | **2.35 MiB** (2 471 484 bytes) |
-
-## Performance notes (UI look unchanged)
-
-Acrylic / fonts / transparent window are preserved. Runtime work targets backend I/O and list data paths.
-
-### Backend
-
-| Area | Notes |
-| --- | --- |
-| **Selection** | Fast membership index for ZIP/TAR/7z selected extract |
-| **TAR select** | Validate selection before any write |
-| **open_root** | One Windows destination root handle per extract (ZIP/TAR/7z) |
-| **7z dirs** | Empty directories materialize via `ensure_path` |
-| **Security path** | Pre-canonical destination root |
-| **Streaming** | TAR and single-stream formats avoid full payload buffers |
-| **GZIP open** | Trailer ISIZE for list size when available |
-| **ZIP test** | Single-pass CRC/decompress test |
-| **Progress** | ~100 ms throttle on long operations |
-| **I/O** | 128 KiB buffers (`io_perf`) |
-
-### Frontend
-
-| Area | Notes |
-| --- | --- |
-| **Indexes** | Parent/path maps for folder browse |
-| **Query** | Single filter pipeline + match count |
-| **Table** | Virtualization, low overscan, rAF scroll |
-| **Progress** | Coalesced UI updates; prefer backend stats |
-
-### Binary size
-
-| Choice | Effect |
-| --- | --- |
-| Release profile | LTO, strip, opt-level 3, panic=abort |
-| **zip** crate | Deflate only (no bzip2/zstd/aes-crypto features) |
-| **sevenz-rust2** | Vendored path (pack-copy API); compress + util |
-
-### Edit performance (v0.2.0)
-
-| Format | Fast path | Notes |
-| --- | --- | --- |
-| ZIP add/mkdir | Append | PreferCompact → full rebuild |
-| ZIP delete | Logical CD delete (PreferFast/Auto small) | Compact reclaims orphans |
-| 7z non-solid | Pack-stream byte-copy | Solid → repack fallback; edit default Normal not Max |
-| TAR* | Stream rebuild | No full work-tree extract |
-
-## Possible next work
-
-1. Solid 7z packing (trade-offs with cancel)  
-2. Single-stream gz/bz2/xz create  
-3. RAR read (licensing) / ZPAQ  
-
+No push is part of this plan. Releases require a clean worktree apart from
+explicitly documented local files, a clean package verification, and a separate
+release commit/tag decision.
