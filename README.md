@@ -3,9 +3,7 @@
 Windows archive manager with a JavaFX desktop shell, a Rust archive engine, and
 a long-lived Rust NDJSON worker.
 
-> **Migration status:** JavaFX is the active desktop target. The old Tauri/Svelte
-> tree remains in this repository temporarily for compatibility tests and staged
-> cleanup; it is not the release UI.
+> **Desktop status:** JavaFX is the active and only supported desktop target.
 
 ## Features
 
@@ -29,7 +27,6 @@ desktop-javafx/       JavaFX controls and window lifecycle; no JNI
 crates/archi-core/    format-independent Rust archive engine
 crates/archi-worker/  long-lived version-1 NDJSON process
 vendor/sevenz-rust2/  local 7z codec fork and pack-copy support
-src-tauri/            legacy adapter and compatibility test suite during cleanup
 ```
 
 Worker protocol limits: 1 MiB frames, 256-entry listing batches, and one archive
@@ -67,8 +64,6 @@ includes the current-user installer; it does not require administrator rights.
 
 ```powershell
 cargo test --workspace --offline --locked --lib --bins --tests
-cargo test --manifest-path src-tauri/Cargo.toml --offline --locked
-npm run check
 .\desktop-javafx\build.ps1 -Test -Smoke
 git diff --check
 ```

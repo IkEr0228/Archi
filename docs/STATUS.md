@@ -16,7 +16,7 @@
 | JavaFX snap, accessibility, drag-in | Done |
 | JavaFX multiple windows and staged external drag-out | Done |
 | Root/release documentation rewrite | Done |
-| Legacy Tauri/Svelte/WebView removal | Pending parity gate and clean release verification |
+| Legacy Tauri/Svelte/WebView removal | Done |
 
 ## Current capabilities
 
@@ -42,15 +42,13 @@
 - `cargo test --workspace --offline --locked` without target selection can hit an
   existing linker defect in `examples/edit_bench`; staged tests use
   `--lib --bins --tests`.
-- Full legacy deletion is intentionally deferred until parity and clean-package
-  gates pass. Do not treat `src-tauri` or `src` as the active desktop surface.
+- The JavaFX package is the only supported desktop artifact; it has no WebView or
+  JNI dependency.
 
 ## Verification commands
 
 ```powershell
 cargo test --workspace --offline --locked --lib --bins --tests
-cargo test --manifest-path src-tauri/Cargo.toml --offline --locked
-npm run check
 .\desktop-javafx\build.ps1 -Test -Smoke
 .\desktop-javafx\package.ps1 -Verify
 ```

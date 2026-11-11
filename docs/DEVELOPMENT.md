@@ -12,16 +12,13 @@ Archi has three active migration layers:
 - `desktop-javafx`: JavaFX controls and window lifecycle. It communicates with
   the worker over pipes and does not use JNI or WebView.
 
-`src-tauri` and `src` are legacy compatibility surfaces during the final cleanup
-phase. New product behavior belongs in the Rust core/worker and JavaFX shell.
+New product behavior belongs in the Rust core/worker and JavaFX shell.
 
 ## Commands
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-21.0.10'
 cargo test --workspace --offline --locked --lib --bins --tests
-cargo test --manifest-path src-tauri/Cargo.toml --offline --locked
-npm run check
 .\desktop-javafx\build.ps1 -Test -Smoke
 .\desktop-javafx\package.ps1 -Verify
 ```

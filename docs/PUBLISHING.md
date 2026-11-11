@@ -12,13 +12,11 @@ request after all gates pass.
 
    ```powershell
    cargo test --workspace --offline --locked --lib --bins --tests
-   cargo test --manifest-path src-tauri/Cargo.toml --offline --locked
    ```
 
 4. Run JavaFX/frontend checks:
 
    ```powershell
-   npm run check
    .\desktop-javafx\build.ps1 -Test -Smoke
    ```
 
@@ -52,6 +50,4 @@ private Java/JavaFX runtime and Rust worker are required.
 - third-party/license notices
 - test evidence for the exact package
 
-Do not publish `src-tauri` binaries as the active product artifact. Legacy
-Tauri/Svelte removal is a separate cleanup phase and must pass the parity gate
-before a release can claim a legacy-free tree.
+The JavaFX app image and Rust worker are the supported product artifacts.

@@ -1,8 +1,7 @@
 # JavaFX desktop
 
 Windows x64, JDK 21+, Rust/MSVC toolchain. JavaFX uses `javafx.controls`, not WebView.
-Archive operations remain in Rust. JavaFX is the active desktop target; the old
-Tauri/Svelte application remains only as a temporary compatibility surface.
+Archive operations remain in Rust. JavaFX is the only supported desktop target.
 
 ## Run
 
@@ -39,10 +38,8 @@ entries and (unless `-KeepFiles` is used) the installed app. Signing remains pen
 
 ```powershell
 cargo test --offline --locked --workspace
-cargo test --offline --locked --manifest-path src-tauri/Cargo.toml
 cargo fmt -p archi-core -p archi-worker -- --check
 .\desktop-javafx\build.ps1 -Test -Smoke
-npm run test:frontend
 ```
 
 `-Test`: Java model/query/framing assertions plus real Java → Rust worker integration.
@@ -56,7 +53,7 @@ automation or pixel-perfect visual acceptance.
 
 ## Implemented
 
-- Independent `crates/archi-core`; legacy adapter re-exports its modules.
+- Independent `crates/archi-core`; JavaFX talks to it through `archi-worker`.
 - Long-lived `archi-worker`, version 1 NDJSON stdin/stdout. Frames bounded to 1 MiB,
   listing batches up to 256 entries, one archive operation at a time. Cancel,
   conflict decisions and shutdown remain available during operations.
@@ -82,8 +79,8 @@ Multiple JavaFX windows, staged external drag-out, native edge snap, drag-in, an
 accessibility roles/text are implemented. Cross-window archive-to-archive moves
 are still copy/extract workflows, not a single shared in-memory model.
 
-The legacy Tauri/Svelte tree remains until the final parity gate and clean release
-verification. It is not the active release UI.
+The release UI has no WebView or JNI dependency; JavaFX communicates with the
+Rust worker through bounded NDJSON pipes.
 
 Encrypted ZIP edits are deliberately disabled: the engine's ZIP editor does not
 preserve encryption. Encrypted 7z edits remain supported with password retry.
