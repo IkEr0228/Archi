@@ -217,6 +217,160 @@ fn cancelled_error() -> CommandError {
     extraction_error("cancelled", "Extraction was cancelled.")
 }
 
+fn transaction_error(message: impl Into<String>) -> CommandError {
+    extraction_error("transaction_failed", message)
+}
+
+fn transaction_backup_path(destination: &Path) -> PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    destination.with_file_name(format!(".archi-transaction-{}-{nonce}", std::process::id()))
+}
+
+fn copy_transaction_tree(source: &Path, target: &Path) -> std::io::Result<()> {
+    fs::create_dir(target)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&source_path)?;
+        if is_link_or_reparse_point(&metadata) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Destination contains a symbolic link or reparse point.",
+            ));
+        }
+        if metadata.is_dir() {
+            copy_transaction_tree(&source_path, &target_path)?;
+        } else if metadata.is_file() {
+            fs::copy(&source_path, &target_path)?;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Destination contains an unsupported file type.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn remove_transaction_tree(root: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.is_dir() && !is_link_or_reparse_point(&metadata) {
+            fs::remove_dir_all(path)?;
+        } else if metadata.is_dir() {
+            fs::remove_dir(path)?;
+        } else {
+            fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
+fn restore_transaction_tree(backup: &Path, destination: &Path) -> std::io::Result<()> {
+    remove_transaction_tree(destination)?;
+    for entry in fs::read_dir(backup)? {
+        let entry = entry?;
+        let source = entry.path();
+        let target = destination.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&source)?;
+        if metadata.is_dir() {
+            copy_transaction_tree(&source, &target)?;
+        } else {
+            fs::copy(source, target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Run extraction with rollback-on-error semantics across all archive codecs.
+///
+/// This protects against partial files, replacements, and created directories
+/// when decoding, validation, cancellation, or conflict handling fails. It is
+/// rollback-safe, not crash-safe: power loss and external concurrent mutation
+/// remain outside this transaction boundary.
+pub fn extract_transactional(
+    archive_path: &Path,
+    destination: &Path,
+    operation_id: &str,
+    cancelled: &AtomicBool,
+    selected_paths: Option<&[String]>,
+    password: Option<String>,
+    conflict_resolver: &dyn ConflictResolver,
+    emit: impl FnMut(OperationProgress),
+) -> Result<OperationSummary, CommandError> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(cancelled_error());
+    }
+    if !destination.is_dir() {
+        return extract_any(
+            archive_path,
+            destination,
+            operation_id,
+            cancelled,
+            selected_paths,
+            password,
+            conflict_resolver,
+            emit,
+        );
+    }
+    let destination = destination.canonicalize().map_err(|error| {
+        transaction_error(format!("Cannot resolve extraction destination: {error}"))
+    })?;
+    let backup = transaction_backup_path(&destination);
+    copy_transaction_tree(&destination, &backup).map_err(|error| {
+        let _ = fs::remove_dir_all(&backup);
+        transaction_error(format!("Cannot create extraction transaction: {error}"))
+    })?;
+
+    let result = extract_any(
+        archive_path,
+        &destination,
+        operation_id,
+        cancelled,
+        selected_paths,
+        password,
+        conflict_resolver,
+        emit,
+    );
+    match result {
+        Ok(summary) => {
+            if let Err(error) = fs::remove_dir_all(&backup) {
+                let mut transaction =
+                    transaction_error(format!("Cannot finalize extraction transaction: {error}"));
+                if let Err(restore_error) = restore_transaction_tree(&backup, &destination) {
+                    transaction
+                        .message
+                        .push_str(&format!(" Rollback failed: {restore_error}."));
+                }
+                let _ = fs::remove_dir_all(&backup);
+                return Err(transaction);
+            }
+            Ok(summary)
+        }
+        Err(mut error) => {
+            if let Err(restore_error) = restore_transaction_tree(&backup, &destination) {
+                error
+                    .message
+                    .push_str(&format!(" Transaction rollback failed: {restore_error}."));
+                error.code = "transaction_failed".into();
+            }
+            if let Err(cleanup_error) = fs::remove_dir_all(&backup) {
+                error
+                    .message
+                    .push_str(&format!(" Transaction cleanup failed: {cleanup_error}."));
+                error.code = "transaction_failed".into();
+            }
+            Err(error)
+        }
+    }
+}
+
 /// Plan-phase existence rules for a destination path that already exists.
 fn plan_existing_destination(
     is_directory_entry: bool,
@@ -861,6 +1015,16 @@ pub fn extract_archive(
 mod tests {
     use super::*;
 
+    fn transaction_test_dir(label: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("archi-transaction-{label}-{nonce}"));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
     #[test]
     fn selection_index_exact_match() {
         let idx = SelectionIndex::from_selected(&["readme.txt".into(), "a/b.txt".into()])
@@ -896,5 +1060,31 @@ mod tests {
         assert!(!idx.includes_normalized("folder_extra/x.txt"));
         assert!(!idx.includes_normalized("fold"));
         assert!(!idx.includes_normalized("folder2/x.txt"));
+    }
+
+    #[test]
+    fn transaction_snapshot_restores_changed_and_created_entries() {
+        let root = transaction_test_dir("rollback");
+        let destination = root.join("destination");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("existing.txt"), b"old").unwrap();
+        fs::create_dir(destination.join("nested")).unwrap();
+        fs::write(destination.join("nested/keep.txt"), b"keep").unwrap();
+        let backup = transaction_backup_path(&destination);
+        copy_transaction_tree(&destination, &backup).unwrap();
+
+        fs::write(destination.join("existing.txt"), b"new").unwrap();
+        fs::write(destination.join("created.txt"), b"remove").unwrap();
+        fs::remove_dir_all(destination.join("nested")).unwrap();
+        restore_transaction_tree(&backup, &destination).unwrap();
+
+        assert_eq!(fs::read(destination.join("existing.txt")).unwrap(), b"old");
+        assert_eq!(
+            fs::read(destination.join("nested/keep.txt")).unwrap(),
+            b"keep"
+        );
+        assert!(!destination.join("created.txt").exists());
+        fs::remove_dir_all(backup).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 }

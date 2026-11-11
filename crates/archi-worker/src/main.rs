@@ -1,5 +1,5 @@
 use archi_core::archive::open_archive;
-use archi_core::extraction::{extract_any, ConflictResolver};
+use archi_core::extraction::{extract_transactional, ConflictResolver};
 use archi_core::models::{
     CommandError, ConflictDecision, CreateFormat, CreateOptions, EditOptions, OperationProgress,
 };
@@ -204,7 +204,7 @@ fn execute(
                     output: output.clone(),
                     sequence: 0.into(),
                 };
-                json!(extract_any(
+                json!(extract_transactional(
                     Path::new(&path),
                     Path::new(&destination),
                     id,

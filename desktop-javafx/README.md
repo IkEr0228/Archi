@@ -90,8 +90,9 @@ deleting the old file first. RAR streams native callbacks into those handles;
 the native library receives no destination path and does not buffer whole files.
 TAR/7z defer replacement of existing files until decoding finishes; TAR codecs are
 drained past TAR end blocks to validate their trailers. Duplicate replacements keep
-last-entry-wins behavior. A partial publication failure may leave earlier successful
-files published: multi-file extraction is **not** an all-or-nothing transaction.
+last-entry-wins behavior. Extraction now snapshots destination and restores it on
+codec, CRC, password, cancellation, or conflict failure. This is rollback-safe,
+not crash/power-loss safe; concurrent external destination mutation is unsupported.
 
 These guarantees have Windows regressions, plus non-Windows staging/sync/publish
 coverage. Non-Windows paths use same-directory temporary files and atomic rename for

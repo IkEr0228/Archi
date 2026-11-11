@@ -1,4 +1,6 @@
-use archi_core::extraction::{extract_any, ConflictResolver, ScriptedConflictResolver};
+use archi_core::extraction::{
+    extract_any, extract_transactional, ConflictResolver, ScriptedConflictResolver,
+};
 use archi_core::models::{CommandError, ConflictDecision};
 use std::fs;
 use std::io::Write;
@@ -261,6 +263,58 @@ fn successful_overwrite_and_rename_keep_expected_bytes() {
             }
         }
     }
+}
+
+#[test]
+fn transactional_extract_restores_prior_replacement_after_tar_crc_failure() {
+    let lab = Lab::new();
+    let path = lab.0.join("broken.tar.gz");
+    let destination = lab.0.join("out");
+    fs::create_dir(&destination).unwrap();
+    fs::write(destination.join("data"), b"original").unwrap();
+    fs::write(destination.join("keep"), b"keep").unwrap();
+
+    let mut tar_bytes = Vec::new();
+    {
+        let mut tar = tar::Builder::new(&mut tar_bytes);
+        for (name, bytes) in [
+            ("data", b"replacement".as_slice()),
+            ("created", b"new".as_slice()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, name, bytes).unwrap();
+        }
+        tar.finish().unwrap();
+    }
+    let file = fs::File::create(&path).unwrap();
+    let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    encoder.write_all(&tar_bytes).unwrap();
+    encoder.finish().unwrap();
+    let mut bytes = fs::read(&path).unwrap();
+    let footer = bytes.len() - 1;
+    bytes[footer] ^= 0x80;
+    fs::write(&path, bytes).unwrap();
+
+    let cancelled = AtomicBool::new(false);
+    let error = extract_transactional(
+        &path,
+        &destination,
+        "transaction",
+        &cancelled,
+        None,
+        None,
+        &ScriptedConflictResolver::new([ConflictDecision::Overwrite]),
+        |_| {},
+    )
+    .unwrap_err();
+
+    assert!(error.code == "invalid_archive" || error.code == "transaction_failed");
+    assert_eq!(fs::read(destination.join("data")).unwrap(), b"original");
+    assert_eq!(fs::read(destination.join("keep")).unwrap(), b"keep");
+    assert!(!destination.join("created").exists());
 }
 
 #[test]
