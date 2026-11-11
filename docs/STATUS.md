@@ -4,6 +4,21 @@
 **Active desktop:** JavaFX + Rust worker
 **License:** MIT
 
+## Latest verification
+
+Release verification completed on 2026-11-11:
+
+- Rust workspace tests: passed (`33` core unit tests, `159` engine regression
+  tests, format suites, and worker protocol tests).
+- JavaFX model/integration/smoke suites: passed, including encrypted RAR retry,
+  JavaFX window/accessibility parity, and external drag-out coverage.
+- Portable package: passed with bundled JDK/JavaFX runtime, worker discovery,
+  fixture open, clean shutdown, and no orphan process.
+- Installer `WhatIf`: passed for HKCU associations and Explorer commands.
+
+Generated package output remains local under `dist-release/`; it is not a source
+release artifact or commit input.
+
 ## Migration phases
 
 | Phase | Status |
