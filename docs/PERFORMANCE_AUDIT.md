@@ -1,5 +1,9 @@
 # Archi Performance & Speed Optimization Audit
 
+> **Historical audit.** This audit predates the JavaFX/Rust-worker migration.
+> Tauri, Svelte, WebView, and `src-tauri` references describe the measured
+> architecture at that time, not current runtime paths.
+
 **Branch:** `perf/speed-optimization`  
 **Target:** Maximize application responsiveness, throughput, and CPU/GPU/Disk efficiency while preserving 100% stability, security, and architectural flexibility.
 

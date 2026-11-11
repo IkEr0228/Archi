@@ -1,5 +1,9 @@
 # Encrypted 7z Archives with Password Support — Design Specification
 
+> **Historical design specification.** The implementation described here was
+> completed during the migration. Its Tauri/Svelte component and command paths
+> are historical; current UI and IPC live in JavaFX and `archi-worker`.
+
 **Дата:** 2026-07-24  
 **Тема:** Полная поддержка паролей (AES256) для создания, открытия и распаковки 7z-архивов  
 **Текущий статус:** Дизайн утверждён пользователем

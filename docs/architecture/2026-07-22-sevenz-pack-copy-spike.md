@@ -1,5 +1,9 @@
 # SA-C1 / SA-C2: 7z pack-stream copy
 
+> **Historical research note.** This document records the pre-JavaFX migration
+> implementation path. Any `src-tauri` paths below identify historical source
+> locations; current implementation lives in `crates/archi-core`.
+
 **Date:** 2026-07-22  
 **Branch:** `feat/incremental-edit`  
 **Scope:** Research spike (SA-C1) **and** product wiring into `sevenz_edit::apply_planned` (SA-C2).

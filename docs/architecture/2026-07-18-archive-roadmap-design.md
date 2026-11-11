@@ -1,5 +1,9 @@
 # Archi Archive Roadmap Design
 
+> **Historical design note.** Written before the JavaFX/Rust-worker migration.
+> References to Tauri, Svelte, WebView, and `src-tauri` describe architecture
+> at the time of this document and are not active product paths.
+
 ## Goal
 
 Turn the current ZIP-only prototype into a fast, safe, honest Windows archive manager without rewriting the Tauri/Svelte application or changing its Niti-style interface.
