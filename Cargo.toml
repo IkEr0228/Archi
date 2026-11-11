@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/archi-core", "crates/archi-worker"]
-exclude = ["src-tauri", "vendor/sevenz-rust2"]
+exclude = ["vendor/sevenz-rust2"]
 resolver = "2"
 
 [profile.release]

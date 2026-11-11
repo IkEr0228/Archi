@@ -14,11 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          node-version: "24"
-          cache: npm
+          distribution: temurin
+          java-version: "21"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -28,22 +28,16 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Frontend unit tests
-        run: npm run test:frontend
-
-      - name: Svelte check
-        run: npm run check
-
-      - name: Frontend production build
-        run: npm run build
+          workspaces: .
 
       - name: Rustfmt
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+        run: |
+          cargo fmt --manifest-path crates/archi-core/Cargo.toml -- --check
+          cargo fmt --manifest-path crates/archi-worker/Cargo.toml -- --check
 
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Rust workspace tests
+        run: cargo test --workspace --locked --lib --bins --tests
+
+      - name: JavaFX tests and smoke
+        shell: pwsh
+        run: .\desktop-javafx\build.ps1 -Test -Smoke

@@ -5,17 +5,16 @@ how we like changes to look.
 
 ## Prerequisites (Windows)
 
-- [Node.js](https://nodejs.org/) 20+ and npm
+- JDK 21+
 - [Rust](https://rustup.rs/) stable (MSVC toolchain on Windows)
 - Visual Studio Build Tools / C++ workload (for native crates)
-- [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for Windows
+- PowerShell
 
 ## Setup
 
 ```powershell
 git clone https://github.com/IkEr0228/Archi.git
 cd Archi
-npm install
 ```
 
 Fork on GitHub if you contribute from a personal copy, then clone your fork instead.
@@ -23,8 +22,8 @@ Fork on GitHub if you contribute from a personal copy, then clone your fork inst
 ## Development
 
 ```powershell
-# Desktop app (frontend + Rust backend)
-npm run tauri dev
+$env:JAVA_HOME = 'C:\Program Files\Java\jdk-21.0.10'
+.\desktop-javafx\build.ps1 -Run -Archive 'C:\archives\example.zip'
 ```
 
 ## Checks before a PR
@@ -32,42 +31,37 @@ npm run tauri dev
 Run what you can; CI will re-run on Windows:
 
 ```powershell
-npm run test:frontend
-npm run check
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo fmt --all -- --check
+cargo test --workspace --offline --locked --lib --bins --tests
+.\desktop-javafx\build.ps1 -Test -Smoke
 ```
 
 Release build (optional, slower):
 
 ```powershell
-npm run tauri build
+.\desktop-javafx\package.ps1 -Verify
 ```
 
 ## Project layout
 
 | Path | Role |
 | --- | --- |
-| `src/` | Svelte 5 UI |
-| `src-tauri/src/` | Rust backend (formats, extract, create, security) |
-| `src-tauri/tests/` | Integration tests |
+| `desktop-javafx/` | JavaFX desktop shell, worker client, packaging, smoke tests |
+| `crates/archi-core/` | Rust archive engine and regression tests |
+| `crates/archi-worker/` | Long-lived NDJSON worker |
+| `vendor/sevenz-rust2/` | Vendored 7z codec fork |
 | `docs/STATUS.md` | Living product/dev status |
 | `docs/architecture/` | Roadmap and design notes |
 | `docs/DEVELOPMENT.md` | Coding and **security** conventions |
 
 ## Coding conventions
 
-- **Svelte components:** PascalCase file names
-- **TypeScript/JS:** camelCase
+- **Java:** PascalCase classes and camelCase members
 - **Rust:** snake_case
-- **CSS:** two-space indent
 - Prefer small, focused modules over mega-files
 - Do not add dependencies without a clear need
-- Frontend state: Svelte 5 runes (`$state`, `$derived`, `$effect`) where appropriate
-- IPC: typed Rust structs (not JSON strings); blocking archive I/O only inside
-  `spawn_blocking` at the command boundary
+- Worker IPC: versioned NDJSON with bounded frames and typed Rust payloads
+- Blocking archive I/O stays in the Rust worker, never on the JavaFX thread
 
 ## Security (required)
 
