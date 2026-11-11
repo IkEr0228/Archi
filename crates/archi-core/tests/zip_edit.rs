@@ -2,9 +2,7 @@ mod common;
 
 use archi_core::archive::open_archive;
 use archi_core::models::{EditOptions, EditStrategyPref};
-use archi_core::zip_edit::{
-    add_paths, create_folder, delete_entries, rename_entry, replace_file,
-};
+use archi_core::zip_edit::{add_paths, create_folder, delete_entries, rename_entry, replace_file};
 use std::cell::Cell;
 use std::fs::{self, File};
 use std::io::Read;
