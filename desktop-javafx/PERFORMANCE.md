@@ -1,5 +1,8 @@
 # Archive benchmarks
 
+Latest listing/query comparison: [2026-11-16 results](../benchmarks/RESULTS.md),
+including raw samples, reproduction commands, and measurement limitations.
+
 ## Initial codec measurement (historical)
 
 Run from repository root:

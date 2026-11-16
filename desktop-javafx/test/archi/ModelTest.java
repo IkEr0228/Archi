@@ -21,11 +21,18 @@ public final class ModelTest {
         assert model.query("empty", "", "All", "", order).isEmpty();
         assert model.query("empty", "A.MD", "All", "", order).size() == 1;
         assert model.query("/", "", "Files", ".MD", order).getFirst().path().equals("dir/a.md");
+        assert model.query("/", "", "Files", " md ", order).getFirst().path().equals("dir/a.md");
         assert model.query("/", "ж", "All", "", order).size() == 1;
         assert model.query("dir", "", "All", "", order).getFirst().compressed() == 6;
         assert model.children.get("/").size() == 3;
         assert ArchiveModel.bytes(1024).equals("1.00 KB");
-        assert ArchiveModel.normalizeParent("dir/").equals("dir");
+        assert ArchiveModel.normalizeParent(null).equals("/");
+        assert ArchiveModel.normalizeParent("").equals("/");
+        assert ArchiveModel.normalizeParent("dir///").equals("dir");
+        assert ArchiveModel.normalizeParent("///").equals("/");
+        Thread.currentThread().interrupt();
+        try { assert model.query("/", "", "All", "", order).isEmpty(); }
+        finally { Thread.interrupted(); }
         var input = new ByteArrayInputStream("{}\n{}\n".getBytes(StandardCharsets.UTF_8));
         assert new String(WorkerClient.readFrame(input), StandardCharsets.UTF_8).equals("{}");
         assert WorkerClient.readFrame(new ByteArrayInputStream(new byte[0])) == null;

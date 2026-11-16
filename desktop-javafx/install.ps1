@@ -20,10 +20,6 @@ foreach ($extension in $extensions) {
     $commandKeys += "$classes\SystemFileAssociations\$extension\shell\ArchiExtractHere\command"
 }
 
-function Invoke-Registry([scriptblock]$Action) {
-    & $Action
-}
-
 if ($Uninstall) {
     foreach ($key in $commandKeys) {
         if (Test-Path $key) { Remove-Item (Split-Path $key -Parent) -Recurse -Force -ErrorAction SilentlyContinue }
@@ -61,20 +57,20 @@ if (!$RegisterOnly) {
 
 $openCommand = '"' + $exe + '" "%1"'
 $extractCommand = '"' + $exe + '" --extract-here "%1"'
-Invoke-Registry { New-Item "$classes\$progId\shell\open\command" -Force }
-Invoke-Registry { Set-ItemProperty "$classes\$progId" -Name '(default)' -Value 'Archi archive' }
-Invoke-Registry { Set-ItemProperty "$classes\$progId\shell\open\command" -Name '(default)' -Value $openCommand }
+New-Item "$classes\$progId\shell\open\command" -Force
+Set-ItemProperty "$classes\$progId" -Name '(default)' -Value 'Archi archive'
+Set-ItemProperty "$classes\$progId\shell\open\command" -Name '(default)' -Value $openCommand
 foreach ($extension in $extensions) {
     $openKey = "$classes\SystemFileAssociations\$extension\shell\ArchiOpen\command"
     $extractKey = "$classes\SystemFileAssociations\$extension\shell\ArchiExtractHere\command"
-    Invoke-Registry { New-Item $openKey -Force }
-    Invoke-Registry { Set-ItemProperty (Split-Path $openKey -Parent) -Name '(default)' -Value 'Open with Archi' }
-    Invoke-Registry { Set-ItemProperty $openKey -Name '(default)' -Value $openCommand }
-    Invoke-Registry { New-Item $extractKey -Force }
-    Invoke-Registry { Set-ItemProperty (Split-Path $extractKey -Parent) -Name '(default)' -Value 'Extract here with Archi' }
-    Invoke-Registry { Set-ItemProperty $extractKey -Name '(default)' -Value $extractCommand }
-    Invoke-Registry { New-Item "$classes\$extension" -Force }
-    Invoke-Registry { Set-ItemProperty "$classes\$extension" -Name '(default)' -Value $progId }
+    New-Item $openKey -Force
+    Set-ItemProperty (Split-Path $openKey -Parent) -Name '(default)' -Value 'Open with Archi'
+    Set-ItemProperty $openKey -Name '(default)' -Value $openCommand
+    New-Item $extractKey -Force
+    Set-ItemProperty (Split-Path $extractKey -Parent) -Name '(default)' -Value 'Extract here with Archi'
+    Set-ItemProperty $extractKey -Name '(default)' -Value $extractCommand
+    New-Item "$classes\$extension" -Force
+    Set-ItemProperty "$classes\$extension" -Name '(default)' -Value $progId
 }
 Write-Host "Archi installed: $exe"
 Write-Host 'File associations and Explorer extraction commands registered for current user.'

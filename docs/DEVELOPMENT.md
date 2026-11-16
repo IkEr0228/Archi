@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Archi has three active migration layers:
+Archi has three application layers:
 
 - `crates/archi-core`: Rust archive model, format dispatch, validation,
   extraction, creation, editing, conflicts, and security policy.

@@ -4,7 +4,7 @@ use archi_core::models::{
     CommandError, ConflictDecision, CreateFormat, CreateOptions, EditOptions, OperationProgress,
 };
 use archi_core::operations::OperationRegistry;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::path::Path;
@@ -99,11 +99,22 @@ enum EditAction {
 #[derive(Clone)]
 struct Output(Arc<Mutex<io::Stdout>>);
 
+#[derive(Serialize)]
+struct Response<'a, T> {
+    version: u32,
+    id: &'a str,
+    event: &'a str,
+    data: T,
+}
+
 impl Output {
-    fn send(&self, id: &str, event: &str, data: Value) -> io::Result<()> {
-        let frame = serde_json::to_vec(
-            &json!({"version": VERSION, "id": id, "event": event, "data": data}),
-        )?;
+    fn send(&self, id: &str, event: &str, data: impl Serialize) -> io::Result<()> {
+        let frame = serde_json::to_vec(&Response {
+            version: VERSION,
+            id,
+            event,
+            data,
+        })?;
         if frame.len() > MAX_FRAME {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -120,7 +131,7 @@ impl Output {
     }
 
     fn error(&self, id: &str, error: CommandError) {
-        let _ = self.send(id, "error", json!(error));
+        let _ = self.send(id, "error", error);
     }
 }
 
@@ -172,7 +183,7 @@ fn execute(
 ) -> Result<Value, CommandError> {
     let result = (|| {
         let emit = |progress: OperationProgress| {
-            if output.send(id, "progress", json!(progress)).is_err() {
+            if output.send(id, "progress", progress).is_err() {
                 registry.cancel(id);
             }
         };
@@ -180,16 +191,12 @@ fn execute(
             Command::Open { path, password } => {
                 let mut info = open_archive(Path::new(&path), password)?;
                 let entries = std::mem::take(&mut info.entries);
-                output
-                    .send(id, "archive", json!(info))
-                    .map_err(output_error)?;
+                output.send(id, "archive", &info).map_err(output_error)?;
                 for batch in entries.chunks(LIST_BATCH) {
                     if state.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
                         return Err(CommandError::new("cancelled", "Listing cancelled"));
                     }
-                    output
-                        .send(id, "entries", json!(batch))
-                        .map_err(output_error)?;
+                    output.send(id, "entries", batch).map_err(output_error)?;
                 }
                 json!({"entry_count": entries.len()})
             }
@@ -529,6 +536,22 @@ fn main() {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn typed_response_preserves_protocol_envelope() {
+        let entries = ["dir/file.txt", "кириллица.txt"];
+        let frame = serde_json::to_vec(&Response {
+            version: VERSION,
+            id: "listing-1",
+            event: "entries",
+            data: &entries,
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&frame).unwrap(),
+            json!({"version": 1, "id": "listing-1", "event": "entries", "data": entries})
+        );
+    }
 
     #[test]
     fn framing_is_bounded_and_requires_newline() {

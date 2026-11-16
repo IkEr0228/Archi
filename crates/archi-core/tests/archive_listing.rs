@@ -49,6 +49,34 @@ fn lists_zip_metadata_once() {
 }
 
 #[test]
+fn synthesizes_deep_parent_directories_without_losing_leaf_metadata() {
+    let root = common::temp_dir("deep-listing");
+    let archive_path = root.join("listing.zip");
+    common::write_zip(&archive_path, &[("one/two/three/file.txt", b"content")]);
+
+    let info = open_archive(&archive_path, None).unwrap();
+
+    assert_eq!(info.stats.file_count, 1);
+    assert_eq!(info.stats.folder_count, 3);
+    assert_eq!(
+        info.entries
+            .iter()
+            .map(|entry| entry.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["one", "one/two", "one/two/three", "one/two/three/file.txt"]
+    );
+    let leaf = info
+        .entries
+        .iter()
+        .find(|entry| entry.path == "one/two/three/file.txt")
+        .unwrap();
+    assert_eq!(leaf.parent_path, "one/two/three");
+    assert_eq!(leaf.uncompressed_size, 7);
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn explicit_directory_metadata_replaces_synthesized_metadata() {
     let root = common::temp_dir("explicit-directory");
     let archive_path = root.join("listing.zip");

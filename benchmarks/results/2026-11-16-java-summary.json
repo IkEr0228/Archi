@@ -1,0 +1,41 @@
+{
+    "schema":  1,
+    "baseline_revision":  "8799378",
+    "workload":  "50k entries; case-insensitive .JaVa extension search/name sort + folder query/size sort",
+    "warmups":  10,
+    "samples_per_process":  20,
+    "processes_per_variant":  6,
+    "median":  "conventional median: average of the two middle sorted samples when sample count is even",
+    "results":  [
+                    {
+                        "variant":  "baseline",
+                        "processes":  6,
+                        "entries":  50000,
+                        "extension_count":  12375,
+                        "folder_count":  99,
+                        "extension_process_p50_ms":  {
+                                                         "min":  1.3181500000000002,
+                                                         "max":  2.2872000000000003
+                                                     },
+                        "folder_process_p50_ms":  {
+                                                      "min":  0.03005,
+                                                      "max":  0.0432
+                                                  }
+                    },
+                    {
+                        "variant":  "current",
+                        "processes":  6,
+                        "entries":  50000,
+                        "extension_count":  12375,
+                        "folder_count":  99,
+                        "extension_process_p50_ms":  {
+                                                         "min":  0.89474999999999993,
+                                                         "max":  1.24055
+                                                     },
+                        "folder_process_p50_ms":  {
+                                                      "min":  0.028999999999999998,
+                                                      "max":  0.04195
+                                                  }
+                    }
+                ]
+}

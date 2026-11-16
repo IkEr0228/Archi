@@ -114,6 +114,4 @@ See [`PERFORMANCE.md`](PERFORMANCE.md). No general speedup claim. Shared edit pl
 indexed collisions, buffered ZIP rebuilds and reuse of already-open ZIP metadata
 reduce specific edit costs; the worker no longer performs a redundant full listing
 before editing. Validation, encrypted ZIP rejection, CRC and sync remain enabled.
-Engine dependencies match the legacy
-lockfile baseline. The architecture graph in `graphify-out/` describes the pre-move
-snapshot and is not the current file map.
+See [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) for the current architecture.

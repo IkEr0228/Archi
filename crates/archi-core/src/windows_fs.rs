@@ -308,19 +308,6 @@ impl Directory {
         Ok(current)
     }
 
-    #[allow(dead_code)]
-    pub fn ensure_directory(
-        &self,
-        name: Vec<u16>,
-        created: &mut Vec<CreatedEntry>,
-    ) -> io::Result<()> {
-        let (directory, was_created) = self.open_or_create_directory(&name)?;
-        if was_created {
-            created.push(directory.created_entry());
-        }
-        Ok(())
-    }
-
     pub fn create_file(
         &self,
         name: &[u16],

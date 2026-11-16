@@ -147,12 +147,13 @@ fn open_zip_archive(path: &Path, _password: Option<&str>) -> Result<ArchiveInfo,
             Some(zip_method_label(file.compression()))
         };
 
-        // Generate parent directories (virtual directories)
-        let parts: Vec<&str> = normalized.split('/').collect();
+        // Generate parent directories (virtual directories) without allocating a
+        // component vector for every entry.
+        let mut components = normalized.split('/').peekable();
         let mut current_prefix = String::with_capacity(normalized.len());
 
-        for j in 0..parts.len() {
-            let part = parts[j];
+        while let Some(part) = components.next() {
+            let is_last = components.peek().is_none();
             let parent = if current_prefix.is_empty() {
                 "/".to_string()
             } else {
@@ -164,10 +165,10 @@ fn open_zip_archive(path: &Path, _password: Option<&str>) -> Result<ArchiveInfo,
             }
             current_prefix.push_str(part);
 
-            let component_is_dir = j < parts.len() - 1 || is_dir;
+            let component_is_dir = !is_last || is_dir;
 
             if let Some(&entry_index) = entry_indices.get(&current_prefix) {
-                if j == parts.len() - 1 && is_dir {
+                if is_last && is_dir {
                     let entry = &mut entries[entry_index];
                     entry.is_directory = true;
                     entry.uncompressed_size = 0;
@@ -190,7 +191,7 @@ fn open_zip_archive(path: &Path, _password: Option<&str>) -> Result<ArchiveInfo,
                     is_directory: component_is_dir,
                     uncompressed_size,
                     compressed_size,
-                    modified_at: (j == parts.len() - 1).then(|| modified_at.clone()),
+                    modified_at: is_last.then(|| modified_at.clone()),
                     method: if component_is_dir {
                         None
                     } else {
@@ -217,7 +218,7 @@ fn open_zip_archive(path: &Path, _password: Option<&str>) -> Result<ArchiveInfo,
     }
 
     let mut warnings = assess_archive(ArchiveRiskInput {
-        entry_count: zip.len(),
+        entry_count: zip_len,
         total_uncompressed,
         total_compressed,
         largest_entry,

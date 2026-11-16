@@ -1,14 +1,8 @@
-# Dependencies & toolchains
-node_modules/
+# JavaFX build
+/desktop-javafx/build/
 
-# Frontend build
-.svelte-kit/
-build/
-dist/
-
-# Rust / Tauri
+# Rust build
 target/
-src-tauri/target/
 
 # Environment & secrets
 .env

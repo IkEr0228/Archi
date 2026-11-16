@@ -40,16 +40,18 @@ final class ArchiveModel {
     List<Entry> query(String parent, String query, String type, String extension, Comparator<Entry> order) {
         String q = query.strip().toLowerCase(Locale.ROOT);
         String ext = extension.strip().toLowerCase(Locale.ROOT).replaceFirst("^\\.", "");
+        String extensionSuffix = "." + ext;
         boolean wholeArchive = !q.isEmpty() || !type.equals("All") || !ext.isEmpty();
         var source = wholeArchive ? entries : children.getOrDefault(normalizeParent(parent), List.of());
         var result = new ArrayList<Entry>();
         for (Entry e : source) {
+            if (Thread.currentThread().isInterrupted()) return List.of();
             if (!q.isEmpty() && !e.nameLower().contains(q) && !e.pathLower().contains(q)) continue;
             if (type.equals("Files") && e.directory() || type.equals("Folders") && !e.directory()) continue;
-            if (!ext.isEmpty() && (e.directory() || !e.nameLower().endsWith("." + ext))) continue;
+            if (!ext.isEmpty() && (e.directory() || !e.nameLower().endsWith(extensionSuffix))) continue;
             result.add(e);
         }
-        result.sort(order);
+        if (result.size() > 1) result.sort(order);
         return result;
     }
 
@@ -65,7 +67,12 @@ final class ArchiveModel {
         return Comparator.comparing((Entry e) -> !e.directory()).thenComparing(value).thenComparing(Entry::path);
     }
     static double ratio(Entry e) { return e.size() == 0 || e.compressed() == null ? 0 : 100.0 * (1 - (double)e.compressed() / e.size()); }
-    static String normalizeParent(String path) { return path == null || path.isEmpty() || path.equals("/") ? "/" : path.replaceAll("/+$", ""); }
+    static String normalizeParent(String path) {
+        if (path == null || path.isEmpty()) return "/";
+        int end = path.length();
+        while (end > 0 && path.charAt(end - 1) == '/') end--;
+        return end == 0 ? "/" : path.substring(0, end);
+    }
     static String string(JsonObject o, String key, String fallback) { return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : fallback; }
     static String bytes(long n) {
         if (n < 1024) return n + " B";
