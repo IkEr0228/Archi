@@ -19,7 +19,7 @@ foreach ($artifact in $artifacts) {
     if ((Get-FileHash $file -Algorithm SHA256).Hash -ne $artifact[1]) { throw "Dependency checksum mismatch: $file" }
 }
 $java = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME/bin/javac.exe")) { "$env:JAVA_HOME/bin" } else { Split-Path (Get-Command javac).Source }
-$modulePath = ((Get-ChildItem "$cache/javafx-*.jar").FullName -join ';')
+$modulePath = ((Get-ChildItem "$cache/javafx-*-win.jar").FullName -join ';')
 $gson = Join-Path $cache 'gson-2.13.2.jar'
 $sources = @((Get-ChildItem "$PSScriptRoot/src" -Filter '*.java' -Recurse).FullName)
 & "$java/javac.exe" --release 21 --module-path $modulePath --add-modules javafx.controls -cp $gson -d $classes @sources

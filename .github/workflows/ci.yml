@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, Revive]
   pull_request:
-    branches: [master, main]
+    branches: [master, main, Revive]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -41,3 +42,37 @@ jobs:
       - name: JavaFX tests and smoke
         shell: pwsh
         run: .\desktop-javafx\build.ps1 -Test -Smoke
+
+      - name: Package Windows application
+        shell: pwsh
+        run: |
+          .\desktop-javafx\package.ps1 -Destination dist-release/windows-x64 -Installer
+          Compress-Archive -Path dist-release/windows-x64/* -DestinationPath dist-release/Archi-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Archi-windows-x64
+          path: dist-release/Archi-windows-x64.zip
+
+  linux-preview:
+    name: Build Linux preview
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libbz2-dev libgtk-3-0
+      - uses: Swatinem/rust-cache@v2
+      - name: Model and worker integration tests
+        run: sh desktop-javafx/build.sh --test
+      - name: Package Linux preview
+        run: sh desktop-javafx/package.sh dist-release/linux-x64
+      - name: Archive application image
+        run: tar -czf dist-release/Archi-linux-x64-preview.tar.gz -C dist-release/linux-x64 Archi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Archi-linux-x64-preview
+          path: dist-release/Archi-linux-x64-preview.tar.gz

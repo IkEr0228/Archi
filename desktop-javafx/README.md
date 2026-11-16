@@ -1,117 +1,123 @@
-# JavaFX desktop
+# Archi JavaFX desktop
 
-Windows x64, JDK 21+, Rust/MSVC toolchain. JavaFX uses `javafx.controls`, not WebView.
-Archive operations remain in Rust. JavaFX is the only supported desktop target.
+The active desktop is a JavaFX shell backed by the Rust `archi-worker`. Windows
+x64 is supported. Linux x64 is a preview build tested on Debian 13 with OpenJDK
+21. The desktop has no WebView or JNI dependency.
 
-## Run
+## Requirements
 
-From the repository root in PowerShell:
+### Windows
+
+- Windows x64
+- OpenJDK 21+
+- Rust stable with the MSVC toolchain and Windows SDK
+- PowerShell
+
+### Linux preview
+
+- Debian 13 x64
+- OpenJDK 21 with `javac`, `java`, `jar`, `jlink`, and `jpackage`
+- Rust and a POSIX shell
+- `curl` and `sha256sum`
+
+The first build downloads checksum-pinned JavaFX 21.0.10 and Gson 2.13.2
+artifacts into the repository `.cache/javafx` directory. Maven and Gradle are not
+required.
+
+## Build and run
+
+From the repository root:
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-21.0.10'
-.\desktop-javafx\build.ps1 -Run -Archive 'C:\archives\example.zip'
-```
-
-Omit `-Archive` for an empty window. Add `-Release` for an optimized worker.
-First build downloads checksum-pinned JavaFX 21.0.10 Windows and Gson 2.13.2 JARs
-from Maven Central into `.cache/javafx`. Java classes and smoke screenshots live in
-`desktop-javafx/build/` (ignored). Maven/Gradle are not required.
-
-## Portable Windows application
-
-```powershell
-.\desktop-javafx\package.ps1 -Verify
-```
-
-Builds a release worker and `dist-release/javafx/Archi/Archi.exe` with a private
-trimmed Java/JavaFX runtime. Copy the **whole Archi directory**, not only its EXE.
-Installed Java is not required. Existing output is never removed; use
-`-Destination 'dist-release/javafx-next'` for another build. `-SkipBuild` reuses
-compiled classes/release worker. `-Verify` opens a fixture from an unrelated working
-directory, checks the bundled worker and closes the application without orphans.
-This is an app image. `-Installer` also copies `install.ps1`, which installs the app
-image per-user and registers archive associations plus Explorer “Extract here”
-commands under HKCU. `install.ps1 -Uninstall -Package <package>` removes those
-entries and (unless `-KeepFiles` is used) the installed app. Signing remains pending.
-
-## Verify
-
-```powershell
-cargo test --offline --locked --workspace
-cargo fmt -p archi-core -p archi-worker -- --check
+.\desktop-javafx\build.ps1 -Run
 .\desktop-javafx\build.ps1 -Test -Smoke
 ```
 
-`-Test`: Java model/query/framing assertions plus real Java → Rust worker integration.
-`-Smoke`: launches the real UI twice; verifies listing/search/modal blur, create,
-folder/rename/add/delete/move/compact, refresh preserving query/selection/folder,
-modal bounds at 800×600 and 720×480, and encrypted RAR header password focus,
-wrong-password retry, then successful opening. Also covers all resize directions,
-encrypted 7z mutation password retry/session memory and disabled encrypted ZIP edits.
-Produces `smoke-*.png`. This is not exhaustive UI
-automation or pixel-perfect visual acceptance.
+Use `-Archive 'C:\path\to\archive.zip'` with `-Run` to open an archive, and
+`-Release` to build the release worker.
 
-## Implemented
+On Debian 13/Linux:
 
-- Independent `crates/archi-core`; JavaFX talks to it through `archi-worker`.
-- Long-lived `archi-worker`, version 1 NDJSON stdin/stdout. Frames bounded to 1 MiB,
-  listing batches up to 256 entries, one archive operation at a time. Cancel,
-  conflict decisions and shutdown remain available during operations.
-- Open/list, indexed folder navigation, archive-wide search/type/extension filters,
-  sorting, multiple selection, file drop to open, properties.
-- Password prompt/retry and optional session-only remembering; password spaces preserved.
-- Extract selected/all, warning acknowledgement, progress, cancellation,
-  overwrite/skip/rename/cancel conflict choices and apply-to-all; archive testing.
-- Dark theme, dotted icons/borders, sharp modal over disabled/blurred background.
-- Create ZIP/7z/TAR/TAR.GZ/TAR.BZ2/TAR.XZ, compression and include-root options,
-  explicit overwrite confirmation, ZIP/7z passwords; TAR encryption is rejected.
-- Add files/folders, new folder, rename, delete, move, replace and compact; edit
-  strategy selection, mutation progress/cancel and automatic listing refresh.
-- Fixed modal header/actions with content-only scrolling; long source paths wrap.
-- Resize from all four edges and corners, preserving opposite-edge anchoring.
-- Worker process regressions exercise all create formats and edit actions,
-  encrypted 7z edit, encrypted ZIP rejection, and original-byte/temp cleanup checks
-  for invalid mutations and immediate cancellation.
+```sh
+./desktop-javafx/build.sh --test
+./desktop-javafx/build.sh --run
+./desktop-javafx/build.sh --release
+```
 
-## Known limits
+The shell script accepts `--archive FILE` as well as `--test`, `--smoke`, `--run`,
+and `--release`.
 
-Multiple JavaFX windows, staged external drag-out, native edge snap, drag-in, and
-accessibility roles/text are implemented. Cross-window archive-to-archive moves
-are still copy/extract workflows, not a single shared in-memory model.
+## Packaging
 
-The release UI has no WebView or JNI dependency; JavaFX communicates with the
-Rust worker through bounded NDJSON pipes.
+Windows portable app image and optional per-user installer:
 
-Encrypted ZIP edits are deliberately disabled: the engine's ZIP editor does not
-preserve encryption. Encrypted 7z edits remain supported with password retry.
+```powershell
+.\desktop-javafx\package.ps1 -Destination dist-release/windows-x64 -Verify -Installer
+```
 
-Windows extraction now uses handle-pinned, no-reparse writes. Single-stream codecs
-and RAR decode into staging, check cancellation/CRC, sync, then publish without
-deleting the old file first. RAR streams native callbacks into those handles;
-the native library receives no destination path and does not buffer whole files.
-TAR/7z defer replacement of existing files until decoding finishes; TAR codecs are
-drained past TAR end blocks to validate their trailers. Duplicate replacements keep
-last-entry-wins behavior. Extraction now snapshots destination and restores it on
-codec, CRC, password, cancellation, or conflict failure. This is rollback-safe,
-not crash/power-loss safe; concurrent external destination mutation is unsupported.
+The complete app image is required: do not copy only `Archi.exe`. The private
+Java/JavaFX runtime and Rust worker are bundled. Existing output is not removed;
+choose a new destination for another package. `-Verify` performs bounded package
+startup, fixture open, worker discovery, and clean shutdown checks. `-Installer`
+also copies the current-user installer script. Signing is not implied.
 
-These guarantees have Windows regressions, plus non-Windows staging/sync/publish
-coverage. Non-Windows paths use same-directory temporary files and atomic rename for
-overwrite, so codec/CRC/cancellation failures do not destroy the old regular file.
-They do not have Windows' handle-pinned no-reparse traversal; a parent symlink race
-between preflight and publish remains outside this verification scope. Use backups
-and disposable destinations while evaluating this migration; it is not yet a
-production replacement. Listing construction inside the core is not interruptible;
-cancel is checked while delivering listing batches. Codec calls can delay shutdown;
-the Java client terminates an unresponsive worker after its shutdown timeout.
+Linux preview package:
 
-Passwords are not logged or written to settings. Optional session memory uses JVM
-strings; complete zeroization of all JVM/Rust copies is not guaranteed.
+```sh
+./desktop-javafx/package.sh dist-release/linux-x64
+```
 
-## Performance
+The application starts at:
 
-See [`PERFORMANCE.md`](PERFORMANCE.md). No general speedup claim. Shared edit planners,
-indexed collisions, buffered ZIP rebuilds and reuse of already-open ZIP metadata
-reduce specific edit costs; the worker no longer performs a redundant full listing
-before editing. Validation, encrypted ZIP rejection, CRC and sync remain enabled.
-See [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) for the current architecture.
+```text
+dist-release/linux-x64/Archi/bin/Archi
+```
+
+`package.sh` creates a Linux app image and includes a runtime. It is not a claim
+that Linux is fully supported, nor does it imply a deb, rpm, Flatpak, or other
+package. ZIP extraction currently returns `unsupported_platform` on Linux. Do
+not assume the same result for other formats or operations without testing them.
+
+## Validation scope
+
+The Java model tests and Java-to-Rust worker integration tests are useful on both
+platforms where their prerequisites are available. JavaFX smoke checks exercise
+real UI behavior; on Linux, bounded Xvfb-based package-startup checks may be used
+but are not exhaustive UI automation.
+
+Rust extraction tests include Windows extraction assumptions. Therefore neither
+`cargo test` nor a successful Linux package startup should be described as full
+Linux validation. Record the exact platform and test scope with any artifact.
+
+## Architecture
+
+- `crates/archi-core` owns format dispatch, archive operations, validation,
+  extraction, creation, editing, and security policy.
+- `crates/archi-worker` is a long-lived version-1 NDJSON process over stdin/stdout.
+  Frames are bounded to 1 MiB, listing responses are batched, and only one
+  archive operation runs at a time.
+- `desktop-javafx` owns controls, windows, keyboard/accessibility behavior, and
+  worker lifecycle.
+
+## Capabilities and limits
+
+The application can browse, search, filter, sort, test, create, and edit supported
+ZIP, 7z, RAR, TAR, GZ, BZ2, and XZ archives where the format permits the action.
+It supports progress, cancellation, conflict choices, path validation, integrity
+checks, and normal-failure rollback.
+
+Encrypted ZIP editing is disabled because the editor cannot preserve encryption;
+encrypted 7z editing remains supported. RAR is read/extract-only and TAR
+  encryption is disabled. Passwords are not logged or persisted, but transient
+Java/Rust, JSON, and codec copies cannot all be guaranteed to be zeroized.
+
+Windows extraction uses handle-pinned no-reparse traversal. Non-Windows paths do
+not have that guarantee. Rollback is not crash/power-loss safe and cannot protect
+against concurrent external destination mutation. Use disposable destinations and
+backups while evaluating the migration.
+
+See [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md) for architecture and
+security rules, [`../docs/STATUS.md`](../docs/STATUS.md) for current platform
+status, and [`../desktop-javafx/PERFORMANCE.md`](PERFORMANCE.md) for benchmark
+results and limitations.

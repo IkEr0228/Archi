@@ -70,13 +70,18 @@ public final class ArchiApp extends Application {
         startupAction = System.getProperty("archi.action");
         startupPath = System.getProperty("archi.path");
         try {
-            worker = new WorkerClient(Path.of(System.getProperty("archi.worker", "target/debug/archi-worker.exe")));
+            worker = new WorkerClient(Path.of(System.getProperty("archi.worker", defaultWorkerPath())));
             worker.request("hello", new JsonObject()).result().whenComplete((hello, error) -> Platform.runLater(() -> {
                 if (error != null) { showError(error); return; }
                 controls();
                 if (startupPath != null && !startupPath.isBlank()) open(startupPath, null, false);
             }));
         } catch (Exception e) { showError(e); }
+    }
+
+    private static String defaultWorkerPath() {
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")
+                ? "target/debug/archi-worker.exe" : "target/debug/archi-worker";
     }
 
     private Node titlebar() {

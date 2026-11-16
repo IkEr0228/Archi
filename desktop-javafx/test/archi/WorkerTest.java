@@ -3,6 +3,7 @@ package archi;
 import com.google.gson.*;
 import java.nio.file.*;
 import java.util.concurrent.*;
+import java.util.*;
 import java.util.zip.*;
 
 public final class WorkerTest {
@@ -24,8 +25,14 @@ public final class WorkerTest {
                 assert archive.entries.size() == 600;
                 arguments.addProperty("destination", output.toString());
                 var selected = new JsonArray(); selected.add("file-599.txt"); arguments.add("selected_paths", selected);
-                client.request("extract", arguments).result().get(10, TimeUnit.SECONDS);
-                assert Files.readString(output.resolve("file-599.txt")).equals("content-599");
+                try {
+                    client.request("extract", arguments).result().get(10, TimeUnit.SECONDS);
+                    assert System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith("windows") : "Linux extraction unexpectedly succeeded";
+                                        assert Files.readString(output.resolve("file-599.txt")).equals("content-599");
+                } catch (ExecutionException e) {
+                    if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")) throw e;
+                    assert e.getCause() instanceof WorkerClient.WorkerError w && w.code.equals("unsupported_platform");
+                }
                 arguments = new JsonObject(); arguments.addProperty("path", fixture.toString());
                 assert client.request("test", arguments).result().get(10, TimeUnit.SECONDS).get("tested_ok").getAsInt() == 600;
                 for (int i = 0; i < 100; i++) {

@@ -28,11 +28,16 @@ Copy-Item "$classes/archi.css" $staging
 & "$java/jar.exe" --create --file "$input/archi.jar" --manifest $manifest -C $staging .
 if ($LASTEXITCODE) { throw 'Application JAR creation failed' }
 Copy-Item "$cache/gson-2.13.2.jar", "$root/target/release/archi-worker.exe" $input
-$modules = ((Get-ChildItem "$cache/javafx-*.jar").FullName -join ';') + ';' + (Join-Path (Split-Path $java -Parent) 'jmods')
+$modules = ((Get-ChildItem "$cache/javafx-*-win.jar").FullName -join ';') + ';' + (Join-Path (Split-Path $java -Parent) 'jmods')
 & "$java/jlink.exe" --module-path $modules --add-modules javafx.controls,java.desktop,java.logging,jdk.unsupported --strip-debug --no-header-files --no-man-pages --output $runtime
 if ($LASTEXITCODE) { throw 'Java runtime creation failed' }
 & "$java/jpackage.exe" --type app-image --name Archi --app-version 0.5.0 --vendor Archi --input $input --main-jar archi.jar --main-class archi.Launcher --runtime-image $runtime --java-options '--add-modules=javafx.controls' --dest $Destination
 if ($LASTEXITCODE) { throw 'Application image creation failed' }
+$licenses = Join-Path $Destination 'Archi/app/licenses'
+New-Item -ItemType Directory -Force $licenses | Out-Null
+Copy-Item "$root/LICENSE" "$licenses/Archi-MIT.txt"
+Copy-Item "$root/vendor/sevenz-rust2/LICENSE" "$licenses/sevenz-rust2-Apache-2.0.txt"
+Remove-Item $scratch -Recurse -Force
 Write-Host "Portable application: $Destination/Archi/Archi.exe"
 Write-Host 'Java runtime included.'
 if ($Installer) {

@@ -1,73 +1,71 @@
-# Archi status
+# Project status
 
 **Active branch:** `Revive`
-**Active desktop:** JavaFX + Rust worker
+
+**Default branch:** `Revive`
+
+**Desktop:** JavaFX UI with a Rust worker
+
 **License:** MIT
 
-## Latest verification
+The repository is unarchived, with active development on `Revive` as the default
+branch. No new release has been published. Legacy v0.5.0
+Tauri assets are historical and should not be presented as current downloads.
 
-Release verification completed on 2026-11-11:
+## Platform status
 
-- Rust workspace tests: passed (`33` core unit tests, `159` engine regression
-  tests, format suites, and worker protocol tests).
-- JavaFX model/integration/smoke suites: passed, including encrypted RAR retry,
-  JavaFX window/accessibility parity, and external drag-out coverage.
-- Portable package: passed with bundled JDK/JavaFX runtime, worker discovery,
-  fixture open, clean shutdown, and no orphan process.
-- Installer `WhatIf`: passed for HKCU associations and Explorer commands.
+| Platform | Status | Notes |
+| --- | --- | --- |
+| Windows x64 | Supported | Primary desktop target; OpenJDK 21 development and portable packaging are supported. |
+| Linux x64 | Preview | Built on Debian 13 x64 with OpenJDK 21. Package startup is bounded validation, not full Linux support. |
 
-Generated package output remains local under `dist-release/`; it is not a source
-release artifact or commit input.
-
-## Migration phases
-
-| Phase | Status |
-| --- | --- |
-| Rust `archi-core` extraction of archive logic | Done |
-| Long-lived NDJSON Rust worker and JavaFX vertical slice | Done |
-| Transactional extraction and rollback | Done |
-| HKCU associations, Explorer verbs, installer, `--extract-here` | Done |
-| Password lifetime hardening | Done with documented transient-copy limits |
-| JavaFX snap, accessibility, drag-in | Done |
-| JavaFX multiple windows and staged external drag-out | Done |
-| Root/release documentation rewrite | Done |
-| Legacy Tauri/Svelte/WebView removal | Done |
+The Linux preview is intentionally narrower than Windows. ZIP extraction returns
+`unsupported_platform` on Linux. Other formats and operations must not be assumed
+to have the same support level merely because the application packages or starts.
 
 ## Current capabilities
 
-- ZIP, 7z, RAR read/extract, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, BZ2, and XZ
-  open/list/extract/test paths as supported by each codec.
-- ZIP/7z/TAR-family creation and capability-aware editing.
-- Encrypted ZIP/7z reads and AES-256 creation. Encrypted ZIP editing is disabled;
-  encrypted 7z editing is supported; RAR is read/extract-only.
-- Selection, search, filtering, sorting, progress, cancellation, conflict
-  resolution, warning acknowledgement, properties, and compact/rebuild actions.
-- JavaFX file drop-in, staged file drag-out, multiple windows, edge snap, modal
-  focus restoration, keyboard shortcuts, and accessibility metadata.
-- Current-user Windows integration without administrator privileges.
+- Browse, search, filter, sort, inspect, and test supported archive formats.
+- Create ZIP, 7z, TAR, TAR.GZ, TAR.BZ2, and TAR.XZ archives.
+- Edit ZIP, 7z, and TAR-family archives where format capabilities allow it.
+- Password-protected reads and ZIP/7z creation; encrypted ZIP editing is disabled,
+  RAR is read/extract-only, and TAR encryption is disabled.
+- Transactional extraction with path validation, progress, cancellation, conflict
+  decisions, integrity checks, and rollback for normal operation failures.
+- JavaFX drag-in, staged external drag-out, multiple windows, accessibility
+  metadata, keyboard navigation, and current-user Windows integration.
 
-## Known limits
+## Validation boundaries
 
-- Transaction rollback is not crash/power-loss safe and cannot guard against
-  concurrent external destination mutation.
-- Non-Windows extraction does not provide the Windows handle-pinned no-reparse
-  guarantee; parent symlink races remain a known limitation.
-- Password zeroization covers owned operation/session boundaries, not every
-  transient Java `String`, Gson JSON object, or codec-internal buffer.
-- `cargo test --workspace --offline --locked` without target selection can hit an
-  existing linker defect in `examples/edit_bench`; staged tests use
-  `--lib --bins --tests`.
-- The JavaFX package is the only supported desktop artifact; it has no WebView or
-  JNI dependency.
+The repository has targeted validation, not a blanket claim that every platform
+suite passes:
 
-## Verification commands
+- Rust tests cover the core and worker, but some extraction tests assume Windows
+  behavior and must not be represented as Linux support evidence.
+- Java model tests and Java-to-Rust worker integration tests cover the desktop
+  protocol and application model.
+- JavaFX smoke coverage exercises the UI on a real display environment. On Linux,
+  package startup can be checked with bounded Xvfb-based validation; this is not
+  exhaustive UI automation or full Linux test coverage.
+- Packaging checks confirm that the bundled worker and runtime can start and
+  shut down in the tested environment. They do not prove support for every codec,
+  archive, filesystem, or desktop environment.
 
-```powershell
-cargo test --workspace --offline --locked --lib --bins --tests
-.\desktop-javafx\build.ps1 -Test -Smoke
-.\desktop-javafx\package.ps1 -Verify
-```
+Generated files under `dist-release/`, `target/`, `build/`, and `.cache/` are local
+build output, not release artifacts or commit input.
 
-No push is part of this plan. Releases require a clean worktree apart from
-explicitly documented local files, a clean package verification, and a separate
-release commit/tag decision.
+## Architecture and security summary
+
+`crates/archi-core` owns archive operations and security policy. `crates/archi-worker`
+is a long-lived version-1 NDJSON process with bounded frames and listing batches.
+`desktop-javafx` provides the JavaFX shell and communicates with the worker over
+pipes without WebView or JNI.
+
+Windows extraction uses handle-pinned no-reparse traversal. Non-Windows extraction
+does not provide that guarantee. Rollback is safe for normal operation errors but
+not crash/power-loss safe and cannot protect against concurrent external mutation.
+Passwords are not logged or persisted; transient Java/Rust, JSON, and codec
+buffers cannot all be guaranteed to be zeroized.
+
+See [`DEVELOPMENT.md`](DEVELOPMENT.md) for change and security rules and
+[`PUBLISHING.md`](PUBLISHING.md) for release policy.

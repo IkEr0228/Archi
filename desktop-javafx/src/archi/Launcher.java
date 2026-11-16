@@ -5,7 +5,7 @@ public final class Launcher {
         if (System.getProperty("archi.worker") == null) {
             try {
                 var application = java.nio.file.Path.of(Launcher.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-                var worker = application.resolveSibling("archi-worker.exe");
+                var worker = application.resolveSibling(System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("win") ? "archi-worker.exe" : "archi-worker");
                 if (java.nio.file.Files.isRegularFile(worker)) System.setProperty("archi.worker", worker.toString());
             } catch (java.net.URISyntaxException e) { throw new IllegalStateException("Cannot locate application files", e); }
         }

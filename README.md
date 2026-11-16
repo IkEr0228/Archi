@@ -1,100 +1,110 @@
 # Archi
 
-Windows archive manager with a JavaFX desktop shell, a Rust archive engine, and
-a long-lived Rust NDJSON worker.
+Archi is an archive manager with a JavaFX desktop application and a Rust archive
+engine. Development is active on the `Revive` default branch. The repository is
+no longer archived.
 
-> **Desktop status:** JavaFX is the active and only supported desktop target.
+## Status
+
+- **Windows x64:** supported desktop platform.
+- **Linux x64:** preview build on Debian 13 with OpenJDK 21. Linux packaging is
+  available for evaluation, not a claim of full platform support.
+- **Releases:** no new release has been published. Legacy v0.5.0 Tauri assets may
+  still exist in repository history or hosting, but they are not current Archi
+  downloads.
 
 ## Features
 
-- Open, browse, search, sort, test, and inspect ZIP, 7z, RAR, TAR, TAR.GZ,
-  TAR.BZ2, TAR.XZ, GZ, BZ2, and XZ archives.
-- Create ZIP, 7z, TAR, TAR.GZ, TAR.BZ2, and TAR.XZ archives.
-- Edit ZIP, 7z, and TAR-family archives where the format capability allows it:
-  add, delete, rename, move, replace, create folders, and compact.
-- AES-256 password support for ZIP/7z creation and encrypted archive reads.
-  Encrypted ZIP editing is intentionally disabled; RAR remains read/extract-only.
-- Transactional extraction with path validation, conflict decisions, cancellation,
-  progress, CRC/integrity checks, and rollback on operation failure.
-- Per-user HKCU archive associations and Explorer “Extract here” integration.
-- JavaFX drag-in, staged external drag-out, multiple windows, native edge snap,
-  keyboard navigation, and accessibility labels/roles.
+- Browse, search, filter, sort, test, create, and edit common ZIP, 7z, RAR, TAR,
+  GZ, BZ2, and XZ archives where each format supports the operation.
+- Extract with path validation, conflict handling, progress, cancellation, CRC
+  checks, and normal-failure rollback.
+- Password-protected archive reads and ZIP/7z creation. Encrypted ZIP editing is
+  disabled; RAR is read/extract-only; TAR encryption is disabled.
+- JavaFX drag-in, staged drag-out, multiple windows, keyboard navigation,
+  accessibility metadata, and current-user Windows Explorer integration.
 
 ## Architecture
 
 ```text
-desktop-javafx/       JavaFX controls and window lifecycle; no JNI
-crates/archi-core/    format-independent Rust archive engine
-crates/archi-worker/  long-lived version-1 NDJSON process
-vendor/sevenz-rust2/  local 7z codec fork and pack-copy support
+desktop-javafx/       JavaFX UI and window lifecycle
+crates/archi-core/    Rust archive model, codecs, validation, and operations
+crates/archi-worker/  Long-lived Rust worker using bounded v1 NDJSON over pipes
 ```
 
-Worker protocol limits: 1 MiB frames, 256-entry listing batches, and one archive
-operation at a time. JavaFX communicates with the worker over stdin/stdout; Rust
-owns archive logic, validation, extraction policy, encryption policy, and archive
-data handling.
+The UI does not use WebView or JNI. Archive logic and security policy stay in
+Rust; the worker permits one archive operation at a time and bounds protocol
+frames and listing batches.
 
-## Windows build and run
+## Build and run
 
-Prerequisites:
+### Windows
 
-- Windows x64
-- JDK 21+
-- Rust stable with the MSVC toolchain and Windows SDK
-- PowerShell
+Requirements: Windows x64, OpenJDK 21+, Rust stable with the MSVC toolchain, the
+Windows SDK, and PowerShell.
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-21.0.10'
-.\desktop-javafx\build.ps1 -Run -Archive 'C:\archives\example.zip'
+.\desktop-javafx\build.ps1 -Run
+.\desktop-javafx\package.ps1 -Destination dist-release/windows-x64 -Verify -Installer
 ```
 
-The first JavaFX build downloads checksum-pinned JavaFX and Gson JARs into
-`.cache/javafx`. Maven and Gradle are not required.
+The package is a portable app image. Copy the complete `Archi` directory, not
+only the executable. The optional installer is per-user and does not require
+administrator rights.
 
-Build a portable app image:
+### Linux preview
 
-```powershell
-.\desktop-javafx\package.ps1 -Verify
+The preview build is built on Debian 13 x64 with OpenJDK 21. It needs a POSIX
+shell, `curl`, `sha256sum`, Rust, the JDK tools, a C/C++ compiler, `pkg-config`,
+and native bzip2 development headers. Running the UI requires GTK 3 and an
+X11-compatible display. The locally built worker requires glibc 2.34+.
+
+On Debian 13, install the native prerequisites with:
+
+```sh
+sudo apt-get install openjdk-21-jdk build-essential pkg-config libbz2-dev libgtk-3-0 curl
 ```
 
-Copy the complete generated `Archi` directory. `package.ps1 -Installer` also
-includes the current-user installer; it does not require administrator rights.
-
-## Verification
-
-```powershell
-cargo test --workspace --offline --locked --lib --bins --tests
-.\desktop-javafx\build.ps1 -Test -Smoke
-git diff --check
+```sh
+./desktop-javafx/build.sh --test
+./desktop-javafx/build.sh --run
+./desktop-javafx/build.sh --release
+./desktop-javafx/package.sh dist-release/linux-x64
 ```
 
-The unconstrained workspace test command may try to link benchmark examples with
-an existing MSVC/LLVM anonymous-symbol defect; use the staged command above.
-Linux cross-checks require native `bzip2` and `unrar` toolchains.
+The packaged application starts at
+`dist-release/linux-x64/Archi/bin/Archi`. ZIP extraction currently returns
+`unsupported_platform` on Linux. Do not infer equivalent support for other
+archive formats from that preview; their behavior is format- and operation-
+dependent and remains under evaluation.
 
-## Security and operational limits
+## Security caveats
 
-- Windows extraction uses handle-pinned, no-reparse staging/publication.
-- Other platforms use same-directory staging, sync, and atomic rename; a parent
-  symlink race remains outside that guarantee.
-- Rollback protects normal operation errors, cancellation, CRC failures, and
-  conflict failures. It is not crash/power-loss safe and does not protect against
-  concurrent external mutation of the destination.
-- Password ownership is zeroized at Rust operation boundaries and JavaFX session
-  secrets use `char[]`; transient JSON/String and codec buffers cannot all be
-  guaranteed zeroized by the current APIs.
-- Use disposable destinations and backups when testing archive mutation or
-  extraction behavior.
+Archive member paths are validated and extracted files are not executed
+automatically. Windows extraction has handle-pinned no-reparse traversal;
+non-Windows extraction does not provide that guarantee. Rollback covers normal
+operation failures, cancellation, CRC, password, and conflict failures, but not
+crash/power-loss recovery or concurrent external destination changes. Passwords
+are not logged or persisted; transient Java/Rust, JSON, and codec copies cannot
+all be guaranteed to be zeroized.
+
+Use disposable destinations and backups while evaluating archive mutation and
+extraction behavior. See [`SECURITY.md`](SECURITY.md) for the project policy.
 
 ## Documentation
 
-- [`desktop-javafx/README.md`](desktop-javafx/README.md) — JavaFX build, package,
-  smoke, and feature details.
-- [`docs/STATUS.md`](docs/STATUS.md) — migration status and known limits.
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — architecture and security rules.
-- [`docs/PUBLISHING.md`](docs/PUBLISHING.md) — release checklist.
+- [`desktop-javafx/README.md`](desktop-javafx/README.md) — desktop build, run, and
+  package details.
+- [`docs/STATUS.md`](docs/STATUS.md) — current platform status and validation
+  boundaries.
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — architecture and development
+  rules.
+- [`docs/PUBLISHING.md`](docs/PUBLISHING.md) — release gates and artifact policy.
+- [`desktop-javafx/PERFORMANCE.md`](desktop-javafx/PERFORMANCE.md) — benchmarks
+  and their limitations.
 
 ## License
 
-Archi is MIT licensed. Third-party crates, the vendored 7z fork, and JavaFX/Gson
-artifacts retain their own licenses.
+Archi is licensed under the [MIT License](LICENSE). Third-party dependencies and
+the vendored 7z fork retain their own licenses.
