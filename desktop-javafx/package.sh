@@ -4,7 +4,7 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 destination=${1:-$root/dist-release/javafx-linux}
-case "$destination" in /*) ;; *) destination="$(CDPATH= cd -- "$(dirname -- "$destination")" && pwd)/$(basename -- "$destination")" ;; esac
+case "$destination" in /*) ;; *) destination="$(pwd)/$destination" ;; esac
 [ ! -e "$destination/Archi" ] || { echo "Archi output already exists: choose another destination" >&2; exit 1; }
 
 sh "$script_dir/build.sh" --release
